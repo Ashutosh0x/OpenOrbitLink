@@ -49,8 +49,10 @@ class BandType(str, Enum):
             "868": cls.ISM,
             "915": cls.ISM,
             "lorawan": cls.ISM,
+            "carrier_ntn": cls.NTN,
             "cellular_ntn": cls.NTN,
             "nb_ntn": cls.NTN,
+            "3gpp_ntn": cls.NTN,
             "rx": cls.RECEIVE_ONLY,
             "rx_only": cls.RECEIVE_ONLY,
         }

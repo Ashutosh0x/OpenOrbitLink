@@ -19,6 +19,8 @@ from protocol.bpv7 import (
 )
 from protocol.packet import OpenOrbitLinkPacket, OpenOrbitLinkProtocol, PayloadType
 from protocol.packet import TransmitBand
+from protocol.dtn import Bundle
+from protocol.ntn import NTNGatewayBridge, NTNGatewayResponse
 from protocol.license import CallsignValidator, LicenseGate
 from protocol.fossa import FossaFrame, FossaFrameError, packet_payload_to_fossa_frames
 from ground_station.tinygs_client import TinyGSClient
@@ -205,6 +207,12 @@ def test_packet_band_field_and_encryption_guard():
     with pytest.raises(EncryptionPolicyError, match="amateur radio"):
         proto.create_encrypted_packet(PayloadType.TEXT, b"ciphertext", band=TransmitBand.AMATEUR)
 
+    carrier = proto.create_encrypted_packet(PayloadType.TEXT, b"ciphertext", band=TransmitBand.CARRIER_NTN)
+    parsed_carrier = OpenOrbitLinkPacket.deserialize(carrier.serialize())
+    assert parsed_carrier is not None
+    assert parsed_carrier.transmit_band == TransmitBand.CARRIER_NTN
+    assert TransmitBand.from_value("carrier_ntn") == TransmitBand.CARRIER_NTN
+
 
 def test_license_gate_blocks_unlicensed_amateur_tx():
     assert CallsignValidator.normalize("vu2ash-7") == "VU2ASH-7"
@@ -232,6 +240,34 @@ def test_link_budget_marks_rtl_sdr_receive_only_and_accounts_overhead():
     assert throughput.total_tx_bytes == 311
     assert 3.5 < throughput.tx_time_seconds < 3.6
     assert throughput.effective_payload_bps < 700.0
+
+    carrier_ntn = compute_link_budget(LinkBudgetParams(tx_path=TxPath.CARRIER_NTN))
+    assert carrier_ntn["tx_capable"] is False
+    assert "Carrier-managed" in carrier_ntn["reason"]
+
+
+@pytest.mark.asyncio
+async def test_ntn_gateway_bridge_builds_stub_request():
+    proto = OpenOrbitLinkProtocol("ntn-bridge")
+    packet = proto.create_text_message("egress later", band=TransmitBand.ISM, encrypt=True)
+    bundle = Bundle(
+        bundle_id="FS-test-000001",
+        packet=packet,
+        destination="sip:+15551234567@example.invalid",
+    )
+    bridge = NTNGatewayBridge("https://carrier.example.invalid/scs")
+
+    request = bridge.build_request(bundle)
+    assert request.transmit_band == TransmitBand.CARRIER_NTN
+    assert request.destination.startswith("sip:")
+    assert OpenOrbitLinkPacket.deserialize(request.payload).transmit_band == TransmitBand.CARRIER_NTN
+
+    response = await bridge.submit_bundle(bundle)
+    assert response == NTNGatewayResponse(
+        accepted=False,
+        status="not_configured",
+        reason="carrier NTN handoff is a convergence stub; configure a carrier SIP/API submitter before transmitting",
+    )
 
 
 def test_fossa_frames_fit_payload_limit_and_base64_roundtrip():

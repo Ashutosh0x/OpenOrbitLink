@@ -24,6 +24,7 @@ class TxPath(str, Enum):
     LORA_ISM_UPLINK = "lora_ism_uplink"
     HAM_SDR_UPLINK = "ham_sdr_uplink"
     HACKRF_EXPERIMENTAL = "hackrf_experimental"
+    CARRIER_NTN = "carrier_ntn"
     ANDROID_NTN = "android_ntn"
     RTL_SDR_RX_ONLY = "rtl_sdr_rx_only"
 
@@ -70,6 +71,16 @@ TX_PATH_PROFILES: dict[TxPath, TxPathProfile] = {
         bandwidth_hz=2_400.0,
         required_snr_db=7.0,
         note="Lab/experimental SDR path requiring filtering, amplification, and legal authorization.",
+    ),
+    TxPath.CARRIER_NTN: TxPathProfile(
+        tx_capable=False,
+        frequency_hz=2.0e9,
+        tx_power_dbm=0.0,
+        tx_antenna_gain_dbi=0.0,
+        tx_cable_loss_db=0.0,
+        bandwidth_hz=180_000.0,
+        required_snr_db=0.0,
+        note="Carrier-managed; latency ~600 ms LEO, throughput SMS-class; no open uplink.",
     ),
     TxPath.ANDROID_NTN: TxPathProfile(
         tx_capable=False,
@@ -332,7 +343,7 @@ def print_link_budget(params: LinkBudgetParams):
 
 
 if __name__ == "__main__":
-    for path in [TxPath.RTL_SDR_RX_ONLY, TxPath.LORA_ISM_UPLINK, TxPath.HAM_SDR_UPLINK]:
+    for path in [TxPath.RTL_SDR_RX_ONLY, TxPath.LORA_ISM_UPLINK, TxPath.HAM_SDR_UPLINK, TxPath.CARRIER_NTN]:
         for elev in [10, 30, 60, 90]:
             print_link_budget(LinkBudgetParams(tx_path=path, elevation_deg=elev))
             print()

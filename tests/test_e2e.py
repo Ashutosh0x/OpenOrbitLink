@@ -125,6 +125,13 @@ def run_protocol_packet(results):
     except EncryptionPolicyError:
         results.ok("Encrypted amateur guard")
 
+    carrier = proto.create_text_message("carrier NTN gateway candidate", band=TransmitBand.CARRIER_NTN)
+    parsed = OpenOrbitLinkPacket.deserialize(carrier.serialize())
+    if parsed and parsed.transmit_band == TransmitBand.CARRIER_NTN:
+        results.ok("Carrier NTN band field")
+    else:
+        results.fail("Carrier NTN band field")
+
 
 def run_codec2_voice(results):
     """Test Codec2 voice encoding/decoding pipeline."""
@@ -243,6 +250,12 @@ def run_link_budget(results):
         results.ok("RTL-SDR marked receive-only")
     else:
         results.fail("RTL-SDR receive-only guard")
+
+    carrier_ntn = compute_link_budget(LinkBudgetParams(tx_path=TxPath.CARRIER_NTN))
+    if not carrier_ntn["tx_capable"] and "Carrier-managed" in carrier_ntn["reason"]:
+        results.ok("Carrier NTN marked closed uplink")
+    else:
+        results.fail("Carrier NTN closed uplink guard")
 
     throughput = analyze_throughput(256, raw_bitrate_bps=700.0)
     if throughput.total_tx_bytes == 311 and throughput.effective_payload_bps < 700:

@@ -19,10 +19,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.freesat.ntn.NtnAvailability
+import org.freesat.ntn.NtnCapabilityDetector
 import org.freesat.ui.theme.*
 
 data class NetworkHop(
@@ -32,6 +35,8 @@ data class NetworkHop(
 
 @Composable
 fun NetworkPathScreen() {
+    val context = LocalContext.current
+    val ntnAvailability = remember(context) { NtnCapabilityDetector.detect(context) }
     val anim = rememberInfiniteTransition(label = "flow")
     val dotOffset by anim.animateFloat(0f, 1f,
         infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "dot")
@@ -67,6 +72,17 @@ fun NetworkPathScreen() {
                     Text("1 orbit period", fontSize = 11.sp, color = TextSecondary)
                 }
             }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        NtnCapabilityCard(ntnAvailability) {
+            val intent = if (ntnAvailability.safetySettingsAvailable) {
+                NtnCapabilityDetector.safetySettingsIntent()
+            } else {
+                NtnCapabilityDetector.fallbackSettingsIntent()
+            }
+            context.startActivity(intent)
         }
 
         Spacer(Modifier.height(20.dp))
@@ -148,6 +164,56 @@ fun NetworkPathScreen() {
                 Spacer(Modifier.width(8.dp))
                 Text("Run Speed Test", color = SatelliteBlue)
             }
+        }
+    }
+}
+
+@Composable
+fun NtnCapabilityCard(availability: NtnAvailability, onOpenSettings: () -> Unit) {
+    val accent = when {
+        availability.satelliteService -> SuccessGreen
+        availability.hardwareFeature -> WarningAmber
+        else -> TextSecondary
+    }
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.SatelliteAlt, null, tint = accent)
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Carrier NTN", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                Text(availability.statusLabel, fontSize = 12.sp, color = accent)
+            }
+            StatusPill("API ${availability.androidApiLevel}", SatelliteBlue)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(availability.detail, fontSize = 12.sp, color = TextSecondary, lineHeight = 16.sp)
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            MetricCard(
+                "Hardware",
+                if (availability.hardwareFeature) "Yes" else "No",
+                if (availability.hardwareFeature) SuccessGreen else TextSecondary,
+                Modifier.weight(1f)
+            )
+            MetricCard(
+                "Gateway",
+                if (availability.satelliteService) "OS" else "Closed",
+                if (availability.satelliteService) SuccessGreen else WarningAmber,
+                Modifier.weight(1f)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onOpenSettings,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = SatelliteBlue),
+            border = BorderStroke(1.dp, SatelliteBlue.copy(alpha = 0.35f)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Filled.Settings, null, tint = SatelliteBlue)
+            Spacer(Modifier.width(8.dp))
+            Text("Open Safety & emergency", color = SatelliteBlue)
         }
     }
 }
