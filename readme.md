@@ -1,6 +1,6 @@
 <div align="center">
 
-#  OpenOrbitLink — Open Satellite Communication for Society
+#  OpenOrbitLink — Open Satellite Communication System
 
 ### The world's first open, decentralised, AI-adaptive satellite communication system.
 
@@ -34,9 +34,7 @@
 - [Three Device Paths](#-three-device-paths)
 - [Layer-by-Layer Breakdown](#-layer-by-layer-breakdown)
 - [Security Architecture](#-security-architecture)
-- [Project Structure](#-project-structure)
 - [Quick Start](#-quick-start)
-- [Testing & Verification](#-testing--verification)
 - [Deployment](#-deployment)
 - [Research Papers](#-research-papers)
 - [Roadmap](#-roadmap)
@@ -492,82 +490,6 @@ graph TB
 
 ---
 
-##  Project Structure
-
-```text
-OpenOrbitLink/
-+-- ai/                          # AI/ML Models (Python)
-|   +-- orbital_predictor.py       # SGP4 satellite pass engine (~500 LOC)
-|   +-- doppler_prediction/        # IIS-LSTM Doppler model + training
-|   +-- link_manager/              # Q-learning satellite selection
-|   +-- speech_enhance/            # Codec2 + WaveRNN neural PLC
-+-- protocol/                    # OpenOrbitLink Protocol (Python reference)
-|   +-- packet.py                  # Packet serialization + CRC + FEC
-|   +-- dtn.py                     # DTN store-and-forward engine
-|   +-- mesh.py                    # LoRa/BLE mesh routing
-+-- protocol-rs/                 # OpenOrbitLink Protocol (Rust high-perf)
-|   +-- src/packet.rs              # Rust packet encoding + 5 unit tests
-|   +-- Cargo.toml                 # Crate manifest
-+-- dsp/                         # Signal Processing (Python/GNU Radio)
-|   +-- __init__.py                # BPSK mod/demod, Barker sync, AX.25
-|   +-- flowgraphs/               # NOAA APT + ISS APRS decoders
-+-- android/                     # Android App (Kotlin)
-|   +-- settings.gradle.kts        # Android plugin and repository setup
-|   +-- app/build.gradle.kts       # Compose + osmdroid + NDK app module
-|   +-- app/src/main/java/org/freesat/
-|   |   +-- MainActivity.kt        # 13-screen navigation + MoreScreen hub
-|   |   +-- discovery/             # Nearby pass foreground service + scorer
-|   |   |   +-- NearbyPassScorer.kt # Elevation/duration/margin/battery scoring
-|   |   |   +-- NearbyPassService.kt # User-visible background pass discovery
-|   |   +-- ui/screens/
-|   |   |   +-- Screens.kt          # Messaging, Call/PTT, Nearby, Tracker, Mesh, SOS
-|   |   |   +-- SatelliteMapScreen.kt  # osmdroid live map + ground tracks (158 LOC)
-|   |   |   +-- LinkDashboardScreen.kt # SNR gauge + Doppler dial + metrics (176 LOC)
-|   |   |   +-- NetworkPathScreen.kt   # Animated data flow + speed test (140 LOC)
-|   |   |   +-- SkyScannerScreen.kt     # Polar plot + radar sweep + obstruction (140 LOC)
-|   |   |   +-- GroundStationScreen.kt  # Antenna control + frequency tuning (144 LOC)
-|   |   |   +-- HardwareSetupScreen.kt  # 3-path wizard + BOM (162 LOC)
-|   |   +-- ui/theme/Theme.kt      # Space dark theme + color system
-|   +-- app/CMakeLists.txt         # NDK build config
-+-- codec2-android/              # Codec2 NDK Build
-|   +-- CMakeLists.txt             # Cross-compile for ARM64
-|   +-- jni/codec2_jni.c           # JNI encode/decode bridge
-+-- ground_station/              # Ground Station Server
-|   +-- relay_daemon.py            # SatNOGS + LoRa gateway daemon
-|   +-- grpc_server.py             # grpc.aio service implementation
-|   +-- freesat.proto              # Protobuf service definition
-|   +-- freesat_pb2.py             # Generated protobuf messages
-|   +-- freesat_pb2_grpc.py        # Generated gRPC service bindings
-+-- simulation/                  # Orbital & RF Simulation
-|   +-- link_budget.py             # Friis equation link analysis
-|   +-- constellation_sim.py      # Multi-node coverage analysis
-+-- security/                    # Cryptography
-|   +-- __init__.py                # AES-256-GCM + HKDF + HMAC
-+-- hardware/                    # BOM & Schematics
-|   +-- ground-station-bom.csv    # 17-item BOM with costs
-+-- docs/                        # Documentation
-|   +-- architecture.md            # System architecture overview
-|   +-- protocol-spec.md           # Wire format specification
-|   +-- hardware-guide.md          # Device paths + antennas
-|   +-- ground-station-setup.md    # RPi setup guide
-|   +-- research-papers.md         # Bibliography
-|   +-- product-layer-roadmap.md   # Chat, PTT calling, nearby-pass engine plan
-+-- scripts/                     # Utilities
-|   +-- fetch_tle.py               # CelesTrak TLE data fetcher
-+-- docker/                      # Containerization
-|   +-- ground-station/Dockerfile  # Ground station container
-|   +-- simulation/Dockerfile      # Simulation container
-|   +-- docker-compose.yml         # Multi-service orchestration
-+-- .github/workflows/           # CI/CD
-|   +-- python-tests.yml           # Python test matrix (3.9-3.12)
-|   +-- rust-ci.yml                # Rust build + clippy + tests
-|   +-- android-ci.yml             # Android APK build
-+-- tests/
-    +-- test_e2e.py                # 20 end-to-end tests (ALL PASS)
-```
-
----
-
 ##  Quick Start
 
 ### Prerequisites
@@ -593,7 +515,7 @@ source .venv/bin/activate      # Linux/Mac
 # .venv\Scripts\activate       # Windows
 pip install -r requirements.txt
 
-# Run tests (20/20 should pass)
+# Run tests
 python tests/test_e2e.py
 
 # Run satellite pass predictor
@@ -620,53 +542,6 @@ cd docker && docker-compose up -d
 cd protocol-rs
 cargo test          # Run unit tests
 cargo build --release
-```
-
----
-
-##  Testing & Verification
-
-### Test Results — 20/20 PASS
-
-```text
-==================================================
-OpenOrbitLink -- End-to-End Test Suite
-==================================================
-
--- Protocol Packet Tests --
-  PASS: Text message round-trip
-  PASS: SOS packet with GPS
-  PASS: Beacon packet
-  PASS: CRC corruption detection
-  PASS: Device ID generation
-
--- Voice Codec Tests --
-  PASS: Codec2 encode (700bps simulation)
-  PASS: Codec2 decode (320 samples)
-  PASS: PLC gap reconstruction (confidence=0.7)
-
--- Orbital Predictor Tests --
-  PASS: TLE loading (ISS)
-  PASS: Pass prediction (5 passes in 254ms)
-  PASS: Prediction speed (254ms < 500ms)
-  PASS: Pass quality scoring (score=0.30)
-
--- Link Budget Tests --
-  PASS: Slant range (753 km)
-  PASS: Free space path loss (133.3 dB)
-  PASS: Elevation vs range relationship
-
--- DTN Engine Tests --
-  PASS: Bundle queuing (3 bundles)
-  PASS: Priority ordering (SOS first)
-  PASS: ACK processing
-
--- Channel Simulation Tests --
-  PASS: AWGN channel (BER=0.0000 at 20dB)
-  PASS: AWGN low-SNR degradation (BER=0.09 at 0dB)
-
-Results: 20/20 passed, 0 failed
-==================================================
 ```
 
 ---
