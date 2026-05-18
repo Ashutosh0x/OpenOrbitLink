@@ -30,6 +30,7 @@
 - [Tech Stack](#-tech-stack)
 - [Performance Specifications](#-performance-specifications)
 - [Features](#-features)
+- [Product Layer Roadmap](#-product-layer-roadmap)
 - [Three Device Paths](#-three-device-paths)
 - [Layer-by-Layer Breakdown](#-layer-by-layer-breakdown)
 - [Security Architecture](#-security-architecture)
@@ -245,7 +246,10 @@ block-beta
 
 ### Core Communication
 - **Satellite Text Messaging** -- 256-byte encrypted messages via ISS APRS / OSCAR digipeaters
+- **Conversation Inbox** -- thread list with unread badges, queued counts, retry state, and pass-aware previews
+- **Chat Timeline** -- quoted replies, voice-burst placeholders, attachment entry point, and clear queued/waiting/sent/delivered/failed states
 - **700bps Satellite Voice** -- Codec2 700C with neural PLC gap-filling for interruptions
+- **Push-to-Talk Calling** -- half-duplex call screen with mute, speaker route, packet-loss quality, and text fallback
 - **Emergency SOS** -- One-tap GPS + distress signal with haptic feedback via all channels
 - **Delivery Confirmation** -- ACK packets returned on subsequent satellite pass
 - **Store-and-Forward** -- DTN bundle engine queues messages during blackout periods
@@ -254,6 +258,7 @@ block-beta
 - **Live Satellite Map** -- osmdroid map with real-time ISS/NOAA/OSCAR positions and ground tracks
 - **Ground Station Pins** -- SatNOGS 500+ stations + custom OpenOrbitLink nodes on global map
 - **Pass Footprint Overlay** -- Visibility cone showing satellite coverage area
+- **Nearby Pass Discovery** -- foreground pass engine surfaces visible-now, next-pass, and best-reliability cards
 - **3D Orbit Viewer** -- Interactive globe with animated orbital paths (planned)
 
 ### Link Telemetry Dashboard
@@ -322,6 +327,33 @@ block-beta
 
 ---
 
+##  Product Layer Roadmap
+
+The app is organized around one user promise: show who can be reached, what will happen next, when the next usable pass opens, and whether a message or voice burst is likely to make it.
+
+```mermaid
+flowchart LR
+    Inbox["Inbox<br/>threads, unread badges, queued counts"] --> Chat["Chat<br/>quoted replies, retry, delivery states"]
+    Chat --> Queue["DTN Queue<br/>store, prioritize, expire, retry"]
+    Call["Call / PTT<br/>half-duplex voice, mute, speaker, text fallback"] --> Queue
+    Nearby["Nearby Passes<br/>GPS + time + TLE + SGP4 + link score"] --> Scheduler["Pass Scheduler<br/>elevation, duration, SNR margin, battery cost"]
+    Scheduler --> Queue
+    Queue --> Paths["Link Paths<br/>Direct NTN, amateur LEO, LoRa relay, ground station"]
+    Paths --> Status["SOS / Status<br/>ACKs, failures, notifications"]
+```
+
+| Surface | Implemented shape | Why it matters |
+|:---|:---|:---|
+| Inbox | Thread cards with unread badges, queued counts, next pass, and reliability | Users see pending work before opening a chat |
+| Chat | Delivery state model, quoted replies, retry action, voice burst rows, attachment entry point | Satellite messaging is delayed, so state clarity is the product |
+| Call / PTT | Dedicated half-duplex screen with packet-loss quality, controls, and text fallback | Voice over intermittent links should behave like bursts, not cellular calls |
+| Nearby Passes | Scored visible-now / next-pass / best-reliability cards | Continuous discovery is battery-aware pass prediction, not blind scanning |
+| Background Engine | Foreground-service skeleton and shared `NearbyPassScorer` | Android background limits require user-visible discovery with controlled refresh |
+
+The D2D/NTN research direction is reflected in the scoring model: hybrid TN/NTN paths are treated as complementary, low-elevation contacts are penalized unless link margin is strong, and reliability is driven by elevation, pass duration, SNR margin, and battery wait cost.
+
+---
+
 ##  Three Device Paths
 
 ```mermaid
@@ -384,10 +416,12 @@ graph LR
 | ACK | 0x05 | 16 B | 2 hr | High |
 | BEACON | 0x06 | 32 B | 10 min | Low |
 
-### Layer 4: Android App (11 Screens)
+### Layer 4: Android App (13 Screens + 1 Discovery Engine)
 - **UI**: Jetpack Compose + Material 3 + glassmorphism dark space theme
 - **Primary (Bottom Nav)**: Messages, Satellite Map, Link Dashboard, SOS, Hub
-- **Secondary (Hub)**: Satellite Tracker, Mesh Network, Sky Scanner, Network Path, Ground Station, Hardware Setup
+- **Secondary (Hub)**: Nearby Passes, Call/PTT, Satellite Tracker, Mesh Network, Sky Scanner, Network Path, Ground Station, Hardware Setup
+- **Messaging UX**: Inbox, chat timeline, quoted replies, retry, voice burst, unread badges, and DTN delivery states
+- **Foreground Discovery**: `NearbyPassService` + `NearbyPassScorer` for pass notifications and visible-now/next/best cards
 - **NDK**: libcodec2.so (voice), libOpenOrbitLink_dsp.so (signals), sdr_bridge.so (USB SDR)
 - **Camera**: CameraX integration for AR sky scanner
 - **Maps**: osmdroid with offline tile caching
@@ -481,9 +515,12 @@ OpenOrbitLink/
 |   +-- settings.gradle.kts        # Android plugin and repository setup
 |   +-- app/build.gradle.kts       # Compose + osmdroid + NDK app module
 |   +-- app/src/main/java/org/freesat/
-|   |   +-- MainActivity.kt        # 11-screen navigation + MoreScreen hub
+|   |   +-- MainActivity.kt        # 13-screen navigation + MoreScreen hub
+|   |   +-- discovery/             # Nearby pass foreground service + scorer
+|   |   |   +-- NearbyPassScorer.kt # Elevation/duration/margin/battery scoring
+|   |   |   +-- NearbyPassService.kt # User-visible background pass discovery
 |   |   +-- ui/screens/
-|   |   |   +-- Screens.kt          # Messaging, Tracker, Mesh, SOS, Settings (486 LOC)
+|   |   |   +-- Screens.kt          # Messaging, Call/PTT, Nearby, Tracker, Mesh, SOS
 |   |   |   +-- SatelliteMapScreen.kt  # osmdroid live map + ground tracks (158 LOC)
 |   |   |   +-- LinkDashboardScreen.kt # SNR gauge + Doppler dial + metrics (176 LOC)
 |   |   |   +-- NetworkPathScreen.kt   # Animated data flow + speed test (140 LOC)
@@ -514,6 +551,7 @@ OpenOrbitLink/
 |   +-- hardware-guide.md          # Device paths + antennas
 |   +-- ground-station-setup.md    # RPi setup guide
 |   +-- research-papers.md         # Bibliography
+|   +-- product-layer-roadmap.md   # Chat, PTT calling, nearby-pass engine plan
 +-- scripts/                     # Utilities
 |   +-- fetch_tle.py               # CelesTrak TLE data fetcher
 +-- docker/                      # Containerization
@@ -664,6 +702,16 @@ python -m ground_station.grpc_server --station-id FS-GS-YOUR-CALL --port 50051
 ---
 
 ##  Research Papers
+
+### Product and NTN Reference Inputs
+
+| Reference | Relevance |
+|:---|:---|
+| Direct-to-Device Connectivity for Integrated Communication, Navigation and Surveillance (IEEE ICNS 2026 / arXiv:2603.11848) | Supports hybrid TN/NTN design, elevation-aware link scoring, and reliability-first ICNS UX |
+| DTN / contact-aware routing literature | Supports queued, delayed, retryable message states instead of normal instant-message assumptions |
+| Android background execution model | Requires foreground, user-visible nearby-pass discovery instead of hidden constant scanning |
+
+### OpenOrbitLink Research Targets
 
 | Title | Target Venue | Status |
 |:---|:---|:---:|

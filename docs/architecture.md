@@ -58,6 +58,23 @@ Bundle:       BPSec RFC 9172 (per-hop integrity, E2E confidentiality)
 7. Recipient's device receives on next pass
 8. ACK returned to confirm delivery
 
+## Product Layer
+
+```mermaid
+flowchart LR
+    Inbox["Inbox"] --> Chat["Chat timeline"]
+    Chat --> DTN["DTN bundle queue"]
+    PTT["Call / PTT"] --> DTN
+    Nearby["Nearby Passes"] --> Scheduler["Pass scheduler"]
+    Scheduler --> DTN
+    DTN --> Link["Adaptive link selector"]
+    Link --> Paths["Direct NTN / LEO / LoRa / Ground station"]
+    Paths --> Ack["ACK, retry, failed, delivered"]
+    Ack --> Inbox
+```
+
+The product layer makes delay visible instead of pretending satellite delivery is instant. Threads show unread counts, queued bundle counts, next usable pass, retry state, and reliability. Calls use half-duplex PTT with text fallback because intermittent satellite voice behaves as bursts, not continuous cellular audio.
+
 ## Key Design Principles
 
 - **Decentralized**: No single point of failure
@@ -66,15 +83,17 @@ Bundle:       BPSec RFC 9172 (per-hop integrity, E2E confidentiality)
 - **Affordable**: $0-$80 total user cost
 - **Open Source**: GPLv3, all code public
 
-## Android App Screens (11)
+## Android App Screens (13)
 
 | Screen | Nav | Description |
 |:---|:---:|:---|
-| Messages | Primary | Encrypted satellite text messaging |
+| Messages | Primary | Inbox + chat timeline with queued/waiting/sent/delivered/failed states |
 | Satellite Map | Primary | osmdroid live map with ISS/NOAA/OSCAR positions |
 | Link Dashboard | Primary | Real-time SNR gauge, Doppler dial, BER/FEC metrics |
 | Emergency SOS | Primary | One-tap GPS + distress signal with haptic feedback |
 | Hub | Primary | Feature grid + settings toggles |
+| Nearby Passes | Secondary | Foreground discovery cards for visible-now, next-pass, and best-reliability contacts |
+| Call / PTT | Secondary | Half-duplex satellite voice UI with packet-loss quality and text fallback |
 | Satellite Tracker | Secondary | Pass predictions with quality scores |
 | Mesh Network | Secondary | LoRa/BLE peer scanning and relay status |
 | Sky Scanner | Secondary | Polar sky plot with radar sweep and obstruction analysis |

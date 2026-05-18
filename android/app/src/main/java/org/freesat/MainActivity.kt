@@ -66,6 +66,8 @@ sealed class NavItem(val route: String, val label: String,
     object Settings : NavItem("settings", "More", Icons.Outlined.Menu, Icons.Filled.Menu)
 
     // Secondary (accessible from top bar / drawer / More screen)
+    object Nearby : NavItem("nearby", "Nearby", Icons.Outlined.Explore, Icons.Filled.Explore, NavGroup.SECONDARY)
+    object Call : NavItem("call", "PTT", Icons.Outlined.Call, Icons.Filled.Call, NavGroup.SECONDARY)
     object Tracker : NavItem("satellite", "Tracker", Icons.Outlined.SatelliteAlt, Icons.Filled.SatelliteAlt, NavGroup.SECONDARY)
     object Mesh : NavItem("mesh", "Mesh", Icons.Outlined.Hub, Icons.Filled.Hub, NavGroup.SECONDARY)
     object SkyScan : NavItem("skyscan", "Sky Scan", Icons.Outlined.CameraAlt, Icons.Filled.CameraAlt, NavGroup.SECONDARY)
@@ -77,7 +79,7 @@ sealed class NavItem(val route: String, val label: String,
 enum class NavGroup { PRIMARY, SECONDARY }
 
 val primaryNavItems = listOf(NavItem.Messages, NavItem.Map, NavItem.Dashboard, NavItem.SOS, NavItem.Settings)
-val secondaryNavItems = listOf(NavItem.Tracker, NavItem.Mesh, NavItem.SkyScan, NavItem.Network, NavItem.GroundStation, NavItem.Hardware)
+val secondaryNavItems = listOf(NavItem.Nearby, NavItem.Call, NavItem.Tracker, NavItem.Mesh, NavItem.SkyScan, NavItem.Network, NavItem.GroundStation, NavItem.Hardware)
 val allNavItems = primaryNavItems + secondaryNavItems
 
 // ─── App Shell ─────────────────────────────────────────────────────────
@@ -109,6 +111,8 @@ fun OpenOrbitLinkApp() {
             composable("settings") { MoreScreen(navController) }
 
             // Secondary screens
+            composable("nearby") { NearbyPassesScreen() }
+            composable("call") { CallPttScreen() }
             composable("satellite") { SatelliteTrackerScreen() }
             composable("mesh") { MeshNetworkScreen() }
             composable("skyscan") { SkyScannerScreen() }
@@ -177,6 +181,8 @@ fun MoreScreen(navController: NavController) {
 
         // Quick access grid
         val hubItems = listOf(
+            Triple(NavItem.Nearby, "Nearby passes and best contact windows", SuccessGreen),
+            Triple(NavItem.Call, "Half-duplex voice with text fallback", NebulaPurple),
             Triple(NavItem.Tracker, "Satellite pass predictions", SatelliteBlue),
             Triple(NavItem.Mesh, "LoRa mesh network", SuccessGreen),
             Triple(NavItem.SkyScan, "AR sky visibility scan", NebulaPurple),

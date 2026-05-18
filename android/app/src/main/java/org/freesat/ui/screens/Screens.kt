@@ -23,8 +23,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.freesat.discovery.DiscoveryLinkPath
+import org.freesat.discovery.NearbyPassCandidate
+import org.freesat.discovery.NearbyPassScorer
 import org.freesat.ui.theme.*
 
 // ── Shared Components ──────────────────────────────────────────
@@ -83,55 +87,126 @@ fun InfoRow(icon: ImageVector, label: String, value: String, valueColor: Color =
 
 // ── Data Classes ───────────────────────────────────────────────
 
+enum class DeliveryState { QUEUED, WAITING_FOR_PASS, SENDING, SENT, DELIVERED, FAILED }
+
+data class ConversationThread(
+    val contact: String,
+    val preview: String,
+    val status: DeliveryState,
+    val queuedCount: Int,
+    val unreadCount: Int,
+    val nextPass: String,
+    val reliability: String,
+)
+
 data class MessageItem(
-    val text: String, val isMine: Boolean, val timestamp: Long,
-    val status: String = "queued", val isVoice: Boolean = false
+    val text: String,
+    val isMine: Boolean,
+    val timestamp: Long,
+    val status: DeliveryState = DeliveryState.QUEUED,
+    val isVoice: Boolean = false,
+    val replyTo: String? = null,
+    val retryable: Boolean = false,
 ) {
     val statusText get() = when (status) {
-        "queued" -> "Queued for satellite pass"
-        "sent" -> "Sent via satellite"
-        "delivered" -> "Delivered"
-        else -> status
+        DeliveryState.QUEUED -> "Queued"
+        DeliveryState.WAITING_FOR_PASS -> "Waiting for pass"
+        DeliveryState.SENDING -> "Sending burst"
+        DeliveryState.SENT -> "Sent via satellite"
+        DeliveryState.DELIVERED -> "Delivered"
+        DeliveryState.FAILED -> "Failed"
     }
     val statusIcon get() = when (status) {
-        "queued" -> Icons.Outlined.Schedule
-        "sent" -> Icons.Outlined.SatelliteAlt
-        "delivered" -> Icons.Filled.CheckCircle
-        else -> Icons.Outlined.Info
+        DeliveryState.QUEUED -> Icons.Outlined.Schedule
+        DeliveryState.WAITING_FOR_PASS -> Icons.Outlined.SatelliteAlt
+        DeliveryState.SENDING -> Icons.Filled.Sync
+        DeliveryState.SENT -> Icons.Outlined.Done
+        DeliveryState.DELIVERED -> Icons.Filled.CheckCircle
+        DeliveryState.FAILED -> Icons.Outlined.ErrorOutline
     }
     val statusColor get() = when (status) {
-        "queued" -> WarningAmber; "sent" -> SatelliteBlue
-        "delivered" -> SuccessGreen; else -> TextSecondary
+        DeliveryState.QUEUED -> WarningAmber
+        DeliveryState.WAITING_FOR_PASS -> NebulaPurple
+        DeliveryState.SENDING -> SatelliteBlue
+        DeliveryState.SENT -> SatelliteBlue
+        DeliveryState.DELIVERED -> SuccessGreen
+        DeliveryState.FAILED -> AlertRed
     }
 }
+
+data class PttLogItem(val speaker: String, val event: String, val quality: String, val time: String)
 
 // ── Messaging Screen ───────────────────────────────────────────
 
 @Composable
 fun MessagingScreen() {
+    var activeTab by remember { mutableStateOf("inbox") }
     var messageText by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf(listOf(
-        MessageItem("Welcome to OpenOrbitLink! Messages encrypted with Signal SPQR + ML-KEM-768.", false, System.currentTimeMillis(), "delivered"),
-        MessageItem("Next ISS pass: 14:23 UTC | 52\u00B0 elevation | 8m30s window", false, System.currentTimeMillis(), "delivered"),
+        MessageItem("Next ISS pass: 14:23 UTC | 52\u00B0 elevation | 8m30s window", false, System.currentTimeMillis(), DeliveryState.DELIVERED),
+        MessageItem("Copy. I will hold transmission until the pass opens.", true, System.currentTimeMillis(), DeliveryState.SENT, replyTo = "Can you confirm relay window?"),
+        MessageItem("Can you confirm relay window?", false, System.currentTimeMillis(), DeliveryState.DELIVERED),
+        MessageItem("Voice memo queued as Codec2 700C frames.", true, System.currentTimeMillis(), DeliveryState.WAITING_FOR_PASS, isVoice = true),
+        MessageItem("Retry route via LoRa neighbor if ISS window closes.", true, System.currentTimeMillis(), DeliveryState.FAILED, retryable = true),
     )) }
     var isRecording by remember { mutableStateOf(false) }
+    val threads = remember {
+        listOf(
+            ConversationThread("Field Team Alpha", "Retry route via LoRa neighbor if ISS window closes.", DeliveryState.FAILED, 2, 1, "Visible now", "82%"),
+            ConversationThread("Medical Relay", "Vitals bundle queued with priority HIGH.", DeliveryState.WAITING_FOR_PASS, 3, 0, "Next pass in 14m", "74%"),
+            ConversationThread("Ground Station FS-GS-001", "Antenna locked. Packet feed clean.", DeliveryState.DELIVERED, 0, 2, "Best pass in 41m", "91%"),
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()
         .background(Brush.verticalGradient(listOf(SpaceBlack, DeepNavy))).padding(16.dp)) {
 
-        ScreenHeader("Messages", "E2E Encrypted \u2022 Store-and-Forward", Icons.Filled.Chat)
+        ScreenHeader("Messages", "Inbox, chat, queue, and pass-aware delivery", Icons.Filled.Chat)
 
         // Stats row
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 16.dp)) {
-            StatChip("Queued", "0", WarningAmber)
-            StatChip("Sent", "0", SatelliteBlue)
-            StatChip("Delivered", "2", SuccessGreen)
+            StatChip("Queued", "5", WarningAmber)
+            StatChip("Waiting", "3", NebulaPurple)
+            StatChip("Delivered", "8", SuccessGreen)
         }
 
-        // Messages
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+            FilterChip(
+                selected = activeTab == "inbox",
+                onClick = { activeTab = "inbox" },
+                label = { Text("Inbox") },
+                leadingIcon = { Icon(Icons.Filled.Inbox, null, modifier = Modifier.size(16.dp)) },
+                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = SatelliteBlue.copy(alpha = 0.18f))
+            )
+            FilterChip(
+                selected = activeTab == "chat",
+                onClick = { activeTab = "chat" },
+                label = { Text("Chat") },
+                leadingIcon = { Icon(Icons.Filled.Forum, null, modifier = Modifier.size(16.dp)) },
+                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = SatelliteBlue.copy(alpha = 0.18f))
+            )
+        }
+
+        if (activeTab == "inbox") {
+            LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(threads) { thread ->
+                    ConversationThreadCard(thread) { activeTab = "chat" }
+                }
+            }
+            return@Column
+        }
+
+        ActiveChatHeader()
+
         LazyColumn(modifier = Modifier.weight(1f), reverseLayout = true,
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(messages) { msg -> MessageBubble(msg) }
+            items(messages) { msg ->
+                MessageBubble(msg, onRetry = {
+                    messages = messages.map {
+                        if (it == msg) it.copy(status = DeliveryState.WAITING_FOR_PASS, retryable = false) else it
+                    }
+                })
+            }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -140,6 +215,9 @@ fun MessagingScreen() {
         Surface(shape = RoundedCornerShape(28.dp), color = SurfaceCard.copy(alpha = 0.8f),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))) {
             Row(modifier = Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { }) {
+                    Icon(Icons.Filled.AttachFile, "Attach", tint = TextSecondary)
+                }
                 IconButton(onClick = { isRecording = !isRecording }) {
                     Icon(if (isRecording) Icons.Filled.Stop else Icons.Filled.Mic, "Voice",
                         tint = if (isRecording) SOSRed else SatelliteBlue)
@@ -153,7 +231,7 @@ fun MessagingScreen() {
                         cursorColor = SatelliteBlue), maxLines = 3)
                 FilledIconButton(onClick = {
                     if (messageText.isNotBlank()) {
-                        messages = listOf(MessageItem(messageText, true, System.currentTimeMillis())) + messages
+                        messages = listOf(MessageItem(messageText, true, System.currentTimeMillis(), DeliveryState.WAITING_FOR_PASS)) + messages
                         messageText = ""
                     }
                 }, colors = IconButtonDefaults.filledIconButtonColors(
@@ -165,7 +243,83 @@ fun MessagingScreen() {
 }
 
 @Composable
-fun MessageBubble(msg: MessageItem) {
+fun ConversationThreadCard(thread: ConversationThread, onOpen: () -> Unit) {
+    GlassCard(modifier = Modifier.fillMaxWidth().clickable { onOpen() }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(44.dp).clip(CircleShape)
+                    .background(thread.status.statusColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Person, null, tint = thread.status.statusColor)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(thread.contact, fontWeight = FontWeight.Bold, color = TextPrimary,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    if (thread.unreadCount > 0) {
+                        Surface(shape = CircleShape, color = AlertRed) {
+                            Text("${thread.unreadCount}", color = Color.White, fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                        }
+                    }
+                }
+                Text(thread.preview, color = TextSecondary, fontSize = 12.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StatusPill(thread.status.statusText, thread.status.statusColor)
+                    StatusPill(thread.nextPass, SatelliteBlue)
+                    if (thread.queuedCount > 0) StatusPill("${thread.queuedCount} queued", WarningAmber)
+                }
+            }
+        }
+    }
+}
+
+private val DeliveryState.statusText: String get() = when (this) {
+    DeliveryState.QUEUED -> "Queued"
+    DeliveryState.WAITING_FOR_PASS -> "Waiting"
+    DeliveryState.SENDING -> "Sending"
+    DeliveryState.SENT -> "Sent"
+    DeliveryState.DELIVERED -> "Delivered"
+    DeliveryState.FAILED -> "Retry"
+}
+
+private val DeliveryState.statusColor: Color get() = when (this) {
+    DeliveryState.QUEUED -> WarningAmber
+    DeliveryState.WAITING_FOR_PASS -> NebulaPurple
+    DeliveryState.SENDING -> SatelliteBlue
+    DeliveryState.SENT -> SatelliteBlue
+    DeliveryState.DELIVERED -> SuccessGreen
+    DeliveryState.FAILED -> AlertRed
+}
+
+@Composable
+fun StatusPill(label: String, color: Color) {
+    Surface(shape = RoundedCornerShape(10.dp), color = color.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.25f))) {
+        Text(label, color = color, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    }
+}
+
+@Composable
+fun ActiveChatHeader() {
+    GlassCard(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Field Team Alpha", fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("Next usable pass: 14m | 52\u00B0 max elevation | 82% reliability",
+                    color = TextSecondary, fontSize = 12.sp)
+            }
+            StatusPill("DTN active", SuccessGreen)
+        }
+    }
+}
+
+@Composable
+fun MessageBubble(msg: MessageItem, onRetry: () -> Unit = {}) {
     Column(modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (msg.isMine) Alignment.End else Alignment.Start) {
         Surface(
@@ -179,16 +333,223 @@ fun MessageBubble(msg: MessageItem) {
             modifier = Modifier.widthIn(max = 300.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
+                msg.replyTo?.let {
+                    Surface(shape = RoundedCornerShape(10.dp), color = Color.White.copy(alpha = 0.05f)) {
+                        Text(it, color = TextSecondary, fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (msg.isVoice) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
+                        Icon(Icons.Filled.GraphicEq, null, modifier = Modifier.size(16.dp), tint = NebulaPurple)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Codec2 voice burst", color = NebulaPurple, fontSize = 12.sp)
+                    }
+                }
                 Text(msg.text, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(msg.statusIcon, null, modifier = Modifier.size(12.dp), tint = msg.statusColor)
                     Spacer(Modifier.width(4.dp))
                     Text(msg.statusText, style = MaterialTheme.typography.labelSmall, color = msg.statusColor)
+                    if (msg.retryable) {
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = onRetry, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                            Text("Retry", color = AlertRed, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+// â”€â”€ Call / PTT Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@Composable
+fun CallPttScreen() {
+    var callState by remember { mutableStateOf("Outgoing") }
+    var pttHeld by remember { mutableStateOf(false) }
+    var muted by remember { mutableStateOf(false) }
+    var speaker by remember { mutableStateOf(true) }
+    val quality = if (pttHeld) 0.72f else 0.58f
+    val log = remember {
+        listOf(
+            PttLogItem("You", "Queued 4 Codec2 frames", "Good", "now"),
+            PttLogItem("Field Team Alpha", "Received 2.1s burst", "Fair", "1m"),
+            PttLogItem("System", "Fallback text prepared", "Ready", "2m"),
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize()
+        .background(Brush.verticalGradient(listOf(SpaceBlack, DeepNavy)))
+        .padding(16.dp).verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+
+        ScreenHeader("Call / PTT", "Half-duplex satellite voice with text fallback", Icons.Filled.Call)
+
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Field Team Alpha", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("$callState | next burst slot in 18s", color = TextSecondary, fontSize = 12.sp)
+                }
+                StatusPill(if (quality > 0.7f) "Usable link" else "Marginal link", if (quality > 0.7f) SuccessGreen else WarningAmber)
+            }
+            Spacer(Modifier.height(16.dp))
+            LinearProgressIndicator(progress = { quality }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                color = if (quality > 0.7f) SuccessGreen else WarningAmber,
+                trackColor = Color.White.copy(alpha = 0.08f))
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("Packet loss 6%", color = TextSecondary, fontSize = 12.sp)
+                Text("Codec2 700C | 700 bps", color = TextSecondary, fontSize = 12.sp)
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                pttHeld = !pttHeld
+                callState = if (pttHeld) "Listening" else "Transmitting"
+            },
+            modifier = Modifier.size(160.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = if (pttHeld) SOSRed else SatelliteBlue)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(if (pttHeld) Icons.Filled.Stop else Icons.Filled.Mic, null, modifier = Modifier.size(42.dp))
+                Spacer(Modifier.height(6.dp))
+                Text(if (pttHeld) "RELEASE" else "PUSH", fontWeight = FontWeight.Black, fontSize = 20.sp)
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AssistChip(onClick = { muted = !muted },
+                label = { Text(if (muted) "Muted" else "Mute") },
+                leadingIcon = { Icon(if (muted) Icons.Filled.MicOff else Icons.Filled.Mic, null, modifier = Modifier.size(16.dp)) })
+            AssistChip(onClick = { speaker = !speaker },
+                label = { Text(if (speaker) "Speaker" else "Earpiece") },
+                leadingIcon = { Icon(Icons.Filled.VolumeUp, null, modifier = Modifier.size(16.dp)) })
+            AssistChip(onClick = { callState = "Text fallback" },
+                label = { Text("Text") },
+                leadingIcon = { Icon(Icons.Filled.Chat, null, modifier = Modifier.size(16.dp)) })
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Burst Log", color = SatelliteBlue, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            log.forEach {
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.GraphicEq, null, tint = SatelliteBlue, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("${it.speaker}: ${it.event}", color = TextPrimary, fontSize = 13.sp)
+                        Text("${it.quality} | ${it.time}", color = TextSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// â”€â”€ Nearby Passes Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@Composable
+fun NearbyPassesScreen() {
+    var discoveryEnabled by remember { mutableStateOf(true) }
+    val passes = remember { NearbyPassScorer.demoCandidates() }
+    val best = passes.maxBy { NearbyPassScorer.score(it) }
+
+    Column(modifier = Modifier.fillMaxSize()
+        .background(Brush.verticalGradient(listOf(SpaceBlack, DeepNavy)))
+        .padding(16.dp).verticalScroll(rememberScrollState())) {
+
+        ScreenHeader("Nearby Passes", "Foreground discovery with pass quality scoring", Icons.Filled.Explore)
+
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.NotificationsActive, null, tint = if (discoveryEnabled) SuccessGreen else TextSecondary)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(if (discoveryEnabled) "Discovery running" else "Discovery paused", color = TextPrimary, fontWeight = FontWeight.Bold)
+                    Text("Best candidate: ${best.name} | ${NearbyPassScorer.score(best)}%", color = TextSecondary, fontSize = 12.sp)
+                }
+                Switch(checked = discoveryEnabled, onCheckedChange = { discoveryEnabled = it },
+                    colors = SwitchDefaults.colors(checkedTrackColor = SuccessGreen))
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        passes.forEach { candidate ->
+            NearbyPassCard(candidate)
+            Spacer(Modifier.height(12.dp))
+        }
+
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Scoring Inputs", color = SatelliteBlue, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            InfoRow(Icons.Filled.Explore, "Elevation", "45% weight")
+            InfoRow(Icons.Filled.Timer, "Duration", "25% weight")
+            InfoRow(Icons.Filled.SignalCellularAlt, "Link margin", "20% weight")
+            InfoRow(Icons.Filled.BatterySaver, "Battery wait cost", "10% weight")
+        }
+    }
+}
+
+@Composable
+fun NearbyPassCard(candidate: NearbyPassCandidate) {
+    val score = NearbyPassScorer.score(candidate)
+    val color = when {
+        score >= 80 -> SuccessGreen
+        score >= 60 -> SatelliteBlue
+        else -> WarningAmber
+    }
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(candidate.name, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("${candidate.path.label} | ${candidate.stateLabel}", color = TextSecondary, fontSize = 12.sp)
+            }
+            StatusPill("${score}%", color)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            MetricBlock("Starts", if (candidate.startsInMinutes <= 0) "Now" else "${candidate.startsInMinutes}m")
+            MetricBlock("Elev.", "${candidate.elevationDeg.toInt()}\u00B0")
+            MetricBlock("Duration", "${candidate.durationSeconds / 60}m")
+            MetricBlock("Margin", "${candidate.snrMarginDb.toInt()} dB")
+        }
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = { }, modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = color.copy(alpha = 0.9f), contentColor = SpaceBlack)) {
+            Icon(if (candidate.startsInMinutes <= 0) Icons.Filled.SatelliteAlt else Icons.Filled.Schedule, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(NearbyPassScorer.recommendation(candidate), fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun MetricBlock(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = TextPrimary, fontWeight = FontWeight.Bold)
+        Text(label, color = TextSecondary, fontSize = 11.sp)
+    }
+}
+
+private val DiscoveryLinkPath.label: String get() = when (this) {
+    DiscoveryLinkPath.DIRECT_NTN -> "Direct NTN"
+    DiscoveryLinkPath.AMATEUR_LEO -> "Amateur LEO"
+    DiscoveryLinkPath.LORA_RELAY -> "LoRa relay"
+    DiscoveryLinkPath.GROUND_STATION -> "Ground station"
 }
 
 // ── Satellite Tracker ──────────────────────────────────────────

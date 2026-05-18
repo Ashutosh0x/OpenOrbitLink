@@ -15,6 +15,7 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Satellite API (Android 16+) -->
@@ -66,6 +67,12 @@
             android:name=".mesh.MeshRelayService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Battery-aware foreground discovery for nearby visible passes -->
+        <service
+            android:name=".discovery.NearbyPassService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
     </application>
 
