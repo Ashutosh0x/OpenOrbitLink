@@ -17,11 +17,15 @@ import numpy as np
 # Add parent to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from protocol.packet import OpenOrbitLinkPacket, OpenOrbitLinkProtocol, PayloadType, crc16_ccitt
+from protocol.packet import OpenOrbitLinkPacket, OpenOrbitLinkProtocol, PayloadType, TransmitBand, crc16_ccitt
 from protocol.dtn import DTNEngine, BundleStore, BundleState
+from protocol.mesh import MeshNode, MeshRouter, NodeCapability
+from protocol.fossa import packet_payload_to_fossa_frames
 from ai.orbital_predictor import OrbitalPredictor, GroundStation
 from ai.speech_enhance import Codec2Wrapper, SatellitePLC, VoiceFrame, SAMPLES_PER_FRAME
-from simulation.link_budget import compute_link_budget, LinkBudgetParams, simulate_awgn_channel
+from simulation.link_budget import TxPath, analyze_throughput, compute_link_budget, LinkBudgetParams, simulate_awgn_channel
+from scripts.fetch_tle import classify_tle_age, parse_tle_records
+from security import EncryptionPolicyError
 
 
 class TestResults:
@@ -106,6 +110,20 @@ def run_protocol_packet(results):
         results.ok("Device ID generation")
     else:
         results.fail("Device ID generation")
+
+    # Test band-aware encryption guard
+    ham_plain = proto.create_text_message("plain ham payload", band=TransmitBand.AMATEUR)
+    parsed = OpenOrbitLinkPacket.deserialize(ham_plain.serialize())
+    if parsed and parsed.transmit_band == TransmitBand.AMATEUR and not parsed.is_encrypted:
+        results.ok("Band field round-trip (amateur plaintext)")
+    else:
+        results.fail("Band field round-trip")
+
+    try:
+        proto.create_encrypted_packet(PayloadType.TEXT, b"ciphertext", band=TransmitBand.AMATEUR)
+        results.fail("Encrypted amateur guard", "Encrypted amateur packet was allowed")
+    except EncryptionPolicyError:
+        results.ok("Encrypted amateur guard")
 
 
 def run_codec2_voice(results):
@@ -220,6 +238,18 @@ def run_link_budget(results):
     else:
         results.fail("Elevation vs range relationship")
 
+    rx_only = compute_link_budget(LinkBudgetParams(tx_path=TxPath.RTL_SDR_RX_ONLY))
+    if not rx_only["tx_capable"] and not rx_only["is_viable"]:
+        results.ok("RTL-SDR marked receive-only")
+    else:
+        results.fail("RTL-SDR receive-only guard")
+
+    throughput = analyze_throughput(256, raw_bitrate_bps=700.0)
+    if throughput.total_tx_bytes == 311 and throughput.effective_payload_bps < 700:
+        results.ok("Throughput overhead accounting")
+    else:
+        results.fail("Throughput overhead accounting")
+
 
 def run_dtn_engine(results):
     """Test DTN store-and-forward engine."""
@@ -254,8 +284,56 @@ def run_dtn_engine(results):
             results.ok("ACK processing")
         else:
             results.fail("ACK processing")
+
+        try:
+            dtn.queue_text("secret ham packet", band=TransmitBand.AMATEUR, encrypt=True)
+            results.fail("DTN encrypted amateur block")
+        except EncryptionPolicyError:
+            results.ok("DTN encrypted amateur block")
     finally:
         os.unlink(db_path)
+
+
+def run_regulatory_and_fossa(results):
+    """Test license-aware routing, FOSSA frames, and TLE age helpers."""
+    print("\n-- Regulatory/FOSSA/TLE Tests --")
+
+    router = MeshRouter(b"ABCDEF")
+    blocked = router.find_best_route(satellite_visible=True, transmit_band=TransmitBand.AMATEUR)
+    if blocked and blocked.startswith("blocked:"):
+        results.ok("Mesh blocks unlicensed amateur route")
+    else:
+        results.fail("Mesh blocks unlicensed amateur route", str(blocked))
+
+    licensed = MeshRouter(
+        b"ABCDEF",
+        capabilities=int(NodeCapability.SDR_TRANSMIT | NodeCapability.SATELLITE_DIRECT),
+        callsign="VU2ASH",
+        license_confirmed=True,
+    )
+    route = licensed.find_best_route(satellite_visible=True, transmit_band=TransmitBand.AMATEUR)
+    if route == "satellite_direct":
+        results.ok("Mesh allows licensed amateur direct route")
+    else:
+        results.fail("Mesh allows licensed amateur direct route", str(route))
+
+    frames = packet_payload_to_fossa_frames(PayloadType.TEXT, b"x" * 140, encrypted=True)
+    if len(frames) == 3 and all(len(frame.encode()) <= 80 for frame in frames):
+        results.ok("FOSSA 80-byte frame fragmentation")
+    else:
+        results.fail("FOSSA 80-byte frame fragmentation")
+
+    tle = "\n".join([
+        "ISS (ZARYA)",
+        "1 25544U 98067A   26136.50000000  .00016717  00000-0  10270-3 0  9005",
+        "2 25544  51.6400 100.0000 0006000  80.0000 280.0000 15.49000000400005",
+    ])
+    from datetime import datetime, timezone
+    records = parse_tle_records(tle, now=datetime(2026, 5, 17, tzinfo=timezone.utc))
+    if records and records[0].staleness == "fresh" and classify_tle_age(8.0) == "stale":
+        results.ok("TLE age metadata helpers")
+    else:
+        results.fail("TLE age metadata helpers")
 
 
 def run_channel_simulation(results):
@@ -294,6 +372,7 @@ def main():
     run_orbital_predictor(results)
     run_link_budget(results)
     run_dtn_engine(results)
+    run_regulatory_and_fossa(results)
     run_channel_simulation(results)
 
     success = results.summary()
@@ -307,6 +386,7 @@ def test_e2e_suite():
     run_orbital_predictor(results)
     run_link_budget(results)
     run_dtn_engine(results)
+    run_regulatory_and_fossa(results)
     run_channel_simulation(results)
     assert results.failed == 0, results.errors
 

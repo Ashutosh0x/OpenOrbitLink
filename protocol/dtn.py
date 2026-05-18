@@ -23,7 +23,8 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Optional, Callable
 
-from .packet import OpenOrbitLinkPacket, PayloadType, OpenOrbitLinkProtocol
+from security import BandType
+from .packet import OpenOrbitLinkPacket, PayloadType, OpenOrbitLinkProtocol, TransmitBand
 
 
 class BundleState(IntEnum):
@@ -110,9 +111,16 @@ class BundleStore:
                     max_retries INTEGER DEFAULT 5,
                     last_attempt REAL DEFAULT 0,
                     destination TEXT DEFAULT '',
-                    payload_type INTEGER DEFAULT 1
+                    payload_type INTEGER DEFAULT 1,
+                    transmit_band INTEGER DEFAULT 0,
+                    encrypted INTEGER DEFAULT 0
                 )
             """)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(bundles)").fetchall()}
+            if "transmit_band" not in columns:
+                conn.execute("ALTER TABLE bundles ADD COLUMN transmit_band INTEGER DEFAULT 0")
+            if "encrypted" not in columns:
+                conn.execute("ALTER TABLE bundles ADD COLUMN encrypted INTEGER DEFAULT 0")
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_state_priority
                 ON bundles(state, priority, created_at)
@@ -125,8 +133,8 @@ class BundleStore:
                 """INSERT OR REPLACE INTO bundles
                    (bundle_id, packet_data, state, priority, created_at,
                     expires_at, retry_count, max_retries, last_attempt,
-                    destination, payload_type)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   destination, payload_type, transmit_band, encrypted)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     bundle.bundle_id,
                     bundle.packet.serialize(),
@@ -139,6 +147,8 @@ class BundleStore:
                     bundle.last_attempt,
                     bundle.destination,
                     int(bundle.packet.payload_type),
+                    int(bundle.packet.transmit_band),
+                    int(bundle.packet.is_encrypted),
                 )
             )
 
@@ -220,8 +230,16 @@ class DTNEngine:
         self._running = False
         self._bundle_counter = 0
 
-    def queue_message(self, packet: OpenOrbitLinkPacket, destination: str = "") -> str:
+    def queue_message(
+        self,
+        packet: OpenOrbitLinkPacket,
+        destination: str = "",
+        band: TransmitBand | BandType | str | None = None,
+    ) -> str:
         """Queue a message for satellite transmission."""
+        if band is not None:
+            packet.transmit_band = TransmitBand.from_value(band)
+        packet.assert_encryption_policy()
         self._bundle_counter += 1
         bundle_id = f"FS-{int(time.time())}-{self._bundle_counter:06d}"
 
@@ -233,15 +251,27 @@ class DTNEngine:
         self.store.store(bundle)
         return bundle_id
 
-    def queue_text(self, text: str, destination: str = "") -> str:
+    def queue_text(
+        self,
+        text: str,
+        destination: str = "",
+        band: TransmitBand | BandType | str = TransmitBand.ISM,
+        encrypt: bool = False,
+    ) -> str:
         """Convenience: queue a text message."""
-        packet = self.protocol.create_text_message(text)
-        return self.queue_message(packet, destination)
+        packet = self.protocol.create_text_message(text, band=band, encrypt=encrypt)
+        return self.queue_message(packet, destination, band=band)
 
-    def queue_sos(self, lat: float, lon: float, message: str = "") -> str:
-        """Queue emergency SOS — highest priority."""
-        packet = self.protocol.create_sos(lat, lon, message)
-        return self.queue_message(packet)
+    def queue_sos(
+        self,
+        lat: float,
+        lon: float,
+        message: str = "",
+        band: TransmitBand | BandType | str = TransmitBand.ISM,
+    ) -> str:
+        """Queue emergency SOS - highest priority."""
+        packet = self.protocol.create_sos(lat, lon, message, band=band)
+        return self.queue_message(packet, band=band)
 
     async def transmission_window(self, duration_seconds: float = 600.0):
         """
@@ -299,4 +329,3 @@ class DTNEngine:
     def get_stats(self) -> dict:
         """Get DTN engine statistics."""
         return self.store.get_stats()
-

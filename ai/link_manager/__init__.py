@@ -2,7 +2,7 @@ from __future__ import annotations
 """
 OpenOrbitLink AI Link Manager — Adaptive Multi-Orbital Satellite Selection
 
-First adaptive orbital D2D architecture for consumer Android devices.
+Adaptive orbital link selection for consumer devices plus external radio nodes.
 Intelligently selects the best satellite link in real-time based on:
 - Elevation angle and signal geometry
 - Predicted SNR from link budget analysis
@@ -85,8 +85,8 @@ class OpenOrbitLinkLinkManager:
 
     def __init__(
         self,
-        device_tx_power_dbm: float = 23.0,      # ~200mW typical phone
-        device_antenna_gain_dbi: float = 0.0,     # Phone internal antenna
+        device_tx_power_dbm: float = 20.0,        # External 100 mW LoRa/ISM-class node
+        device_antenna_gain_dbi: float = 5.0,     # Small directional external antenna
         min_snr_threshold_db: float = 3.0,         # Minimum usable SNR
         learning_rate: float = 0.1,                # Q-learning alpha
         discount_factor: float = 0.95,             # Q-learning gamma
@@ -177,6 +177,10 @@ class OpenOrbitLinkLinkManager:
         - VOICE: Minimize Doppler + maximize duration
         - TEXT: Balance all factors
         """
+        if not candidate.supports_uplink:
+            candidate.score = 0.0
+            return 0.0
+
         # Compute link budget
         budget = self.compute_link_budget(
             candidate.range_km,
@@ -311,4 +315,3 @@ class OpenOrbitLinkLinkManager:
                 for nid in self._attempts
             },
         }
-

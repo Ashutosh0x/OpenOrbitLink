@@ -1,116 +1,84 @@
-# OpenOrbitLink System Architecture
+# OpenOrbitLink Architecture
 
-## Overview
+## System Shape
 
-OpenOrbitLink is a 7-layer open satellite communication stack designed for decentralized,
-free communication over amateur and research satellite networks.
+OpenOrbitLink is a delay-tolerant communications stack with multiple physical
+paths. The architecture is intentionally path-aware because each path has
+different hardware, latency, encryption, and regulatory constraints.
 
-## Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    LAYER 7: ORBITAL NETWORK                         │
-│              ISS APRS · OSCAR · NOAA · CubeSats · TinyGS           │
-│                      500-600km LEO orbits                           │
-├─────────────────────────────────────────────────────────────────────┤
-│                   LAYER 6: GROUND STATIONS                          │
-│     SatNOGS · RPi Relay · LoRa Gateway · grpc.aio Server           │
-│              500+ stations · 7 RPCs · 15 message types              │
-├─────────────────────────────────────────────────────────────────────┤
-│                    LAYER 5: AI ROUTING                               │
-│        TFLite Doppler Prediction · Orbital Link Manager             │
-│           IIS-LSTM · Q-Learning Satellite Selection                 │
-├─────────────────────────────────────────────────────────────────────┤
-│                   LAYER 4: ANDROID APP                              │
-│        Kotlin · Jetpack Compose · 11 Screens · CameraX · osmdroid   │
-│           3 Hardware Paths: NTN / SDR / LoRa · Haptic · Biometric   │
-├─────────────────────────────────────────────────────────────────────┤
-│                 LAYER 3: PROTOCOL STACK                              │
-│          OpenOrbitLink Protocol: AX.25 + CCSDS + DTN hybrid               │
-│       6 payload types · RS FEC · CRC-16 · Store-and-Forward         │
-├─────────────────────────────────────────────────────────────────────┤
-│                    LAYER 2: DSP                                      │
-│        BPSK/QPSK Demod · Reed-Solomon · Viterbi FEC                 │
-│            Codec2 700bps · Barker-13 Sync · Doppler                 │
-├─────────────────────────────────────────────────────────────────────┤
-│                  LAYER 1: RF PHYSICAL                                │
-│         RTL-SDR V4 · HackRF One · LoRa SX1276 · NTN Modem          │
-│                  137 MHz - 6 GHz coverage                           │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    App["Android / CLI app"] --> Policy["Band + license policy"]
+    Policy --> Packet["OpenOrbitLink packet"]
+    Packet --> DTN["DTN queue"]
+    DTN --> Selector["Link selector"]
+    Selector --> LoRa["External LoRa ISM node"]
+    Selector --> Ham["Licensed amateur station"]
+    Selector --> RX["RTL-SDR receive path"]
+    Selector --> NTN["Carrier NTN path"]
+    LoRa --> TinyGS["TinyGS / FOSSA-compatible station"]
+    Ham --> APRS["AX.25 / APRS"]
+    RX --> Decode["NOAA/APRS receive decode"]
+    NTN --> Carrier["Carrier network"]
 ```
 
-## Security Stack
+## Capability Matrix
 
-```
-Application:  Signal Protocol SPQR (Triple Ratchet + ML-KEM)
-Transport:    PQ-WireGuard (hybrid classical + post-quantum)
-Bundle:       BPSec RFC 9172 (per-hop integrity, E2E confidentiality)
-```
+| Component | TX | RX | Encryption | License Gate | Current Scope |
+|:---|:---:|:---:|:---:|:---:|:---|
+| Android app alone | No arbitrary RF | Phone modem only | App-layer only | Carrier/OS | UI and queueing; no direct SDR TX. |
+| RTL-SDR V4 | No | Yes | N/A | Usually no RX license | NOAA/APRS receive and demos. |
+| LoRa SX1276/SX126x node | Yes | Yes | Yes on ISM | Regional ISM rules | Best open encrypted messaging path. |
+| ISS APRS / amateur AX.25 | Yes with station | Yes | No | Ham license required | Plaintext APRS-compatible packets only. |
+| TinyGS station | Config-dependent | Yes | API transport only | Depends on TX config | API client and receive/relay integration. |
+| Carrier NTN | Carrier-managed | Carrier-managed | Yes | Carrier subscription | Future/convergence layer, not open RF. |
+
+## Security Boundary
+
+Encryption is selected after the band is known:
+
+1. User or router chooses a transmit band.
+2. `LicenseGate` checks callsign and operator attestation for amateur TX.
+3. `EncryptionPolicy` blocks confidentiality on amateur and receive-only paths.
+4. `OpenOrbitLinkPacket` serializes the band and encrypted flag.
+5. BPSec BCB validation rejects confidentiality blocks on prohibited bands.
+
+This prevents the old contradiction where the README promised post-quantum E2E
+encryption while also claiming amateur satellite compatibility.
+
+## Regulatory Section
+
+| Rule Area | Architecture Decision |
+|:---|:---|
+| Amateur encryption | Amateur `TransmitBand` allows plaintext plus integrity only. |
+| Amateur operator ID | Mesh and routing require a syntactically valid callsign plus local license attestation before TX. |
+| ISM regional limits | LoRa path is modeled separately; docs and code avoid global "free spectrum" claims. |
+| PSTN interconnect | Not part of the satellite RF path; must use a legal SIP/PSTN provider through an internet gateway. |
+| Receive-only hardware | RTL-SDR appears only as receive/decode, never uplink. |
+| TLE freshness | Predictor tracks loaded TLE epoch and exposes refresh warnings. |
 
 ## Data Flow
 
-1. User composes message on Android app
-2. Message encrypted with Signal SPQR + ML-KEM-768
-3. Encoded into OpenOrbitLink packet with RS FEC + CRC-16
-4. Queued in DTN bundle store (SQLite)
-5. During satellite pass window -> burst transmitted
-6. Ground station receives via protobuf/gRPC streaming -> stores -> relays
-7. Recipient's device receives on next pass
-8. ACK returned to confirm delivery
-
-## Product Layer
-
 ```mermaid
-flowchart LR
-    Inbox["Inbox"] --> Chat["Chat timeline"]
-    Chat --> DTN["DTN bundle queue"]
-    PTT["Call / PTT"] --> DTN
-    Nearby["Nearby Passes"] --> Scheduler["Pass scheduler"]
-    Scheduler --> DTN
-    DTN --> Link["Adaptive link selector"]
-    Link --> Paths["Direct NTN / LEO / LoRa / Ground station"]
-    Paths --> Ack["ACK, retry, failed, delivered"]
-    Ack --> Inbox
+sequenceDiagram
+    participant U as User
+    participant P as Policy
+    participant Q as DTN Queue
+    participant L as Link
+    participant G as Ground/Relay
+    participant R as Recipient
+
+    U->>P: Compose message + choose path
+    P->>P: Check band, encryption, callsign
+    P->>Q: Queue packet with band metadata
+    Q->>L: Wait for contact window
+    L->>G: Transmit or relay
+    G->>R: Deliver when recipient path exists
+    R->>Q: Optional ACK on later contact
 ```
 
-The product layer makes delay visible instead of pretending satellite delivery is instant. Threads show unread counts, queued bundle counts, next usable pass, retry state, and reliability. Calls use half-duplex PTT with text fallback because intermittent satellite voice behaves as bursts, not continuous cellular audio.
+## Product Positioning
 
-## Key Design Principles
-
-- **Decentralized**: No single point of failure
-- **Delay-Tolerant**: 90-minute max latency is acceptable
-- **Legal**: Only amateur/ISM/research bands
-- **Affordable**: $0-$80 total user cost
-- **Open Source**: GPLv3, all code public
-
-## Android App Screens (13)
-
-| Screen | Nav | Description |
-|:---|:---:|:---|
-| Messages | Primary | Inbox + chat timeline with queued/waiting/sent/delivered/failed states |
-| Satellite Map | Primary | osmdroid live map with ISS/NOAA/OSCAR positions |
-| Link Dashboard | Primary | Real-time SNR gauge, Doppler dial, BER/FEC metrics |
-| Emergency SOS | Primary | One-tap GPS + distress signal with haptic feedback |
-| Hub | Primary | Feature grid + settings toggles |
-| Nearby Passes | Secondary | Foreground discovery cards for visible-now, next-pass, and best-reliability contacts |
-| Call / PTT | Secondary | Half-duplex satellite voice UI with packet-loss quality and text fallback |
-| Satellite Tracker | Secondary | Pass predictions with quality scores |
-| Mesh Network | Secondary | LoRa/BLE peer scanning and relay status |
-| Sky Scanner | Secondary | Polar sky plot with radar sweep and obstruction analysis |
-| Network Path | Secondary | Animated data flow through Phone > LoRa > GS > Satellite |
-| Ground Station | Secondary | Remote antenna control, frequency tuning, packet feed |
-| Hardware Setup | Secondary | 3-path wizard (NTN/SDR/LoRa) with checklists and BOM |
-
-## Ground Station gRPC API
-
-7 RPCs defined in `ground_station/freesat.proto`:
-
-| RPC | Type | Description |
-|:---|:---|:---|
-| `GetStatus` | Unary | Station ID, uptime, hardware, location |
-| `GetTelemetry` | Unary | Signal, SNR, Doppler, BER, temperature |
-| `StreamPackets` | Server stream | Live decoded packet feed |
-| `StreamWaterfall` | Server stream | FFT waterfall spectrum data |
-| `ControlAntenna` | Unary | Set azimuth/elevation, tracking mode |
-| `SetFrequency` | Unary | Tune receiver, set modulation/gain |
-| `RunSpeedTest` | Unary | Measure link throughput and latency |
+OpenOrbitLink is strongest as an auditable, open, asynchronous messaging layer
+for places where carrier networks are unavailable or not trusted. It should not
+be framed as a drop-in replacement for cellular voice or emergency dispatch.

@@ -26,6 +26,9 @@ EARTH_RADIUS_KM = 6371.0
 SPEED_OF_LIGHT_M_S = 299_792_458.0
 MIN_ELEVATION_DEG = 5.0  # Minimum useful elevation for satellite link
 SECONDS_PER_DAY = 86400.0
+TLE_WARNING_AGE_DAYS = 3.0
+TLE_STALE_AGE_DAYS = 7.0
+TLE_EXPIRED_AGE_DAYS = 14.0
 
 
 @dataclass(frozen=True)
@@ -114,6 +117,57 @@ class DopplerProfile:
         return float(np.max(np.abs(rates)))
 
 
+@dataclass(frozen=True)
+class TLEAgeInfo:
+    """Age and staleness state for a loaded TLE."""
+    satellite_name: str
+    norad_id: int
+    epoch: datetime
+    age_days: float
+    staleness: str
+    warning: str = ""
+
+
+@dataclass
+class TLERefreshScheduler:
+    """Small helper for deciding when TLE data should be refreshed."""
+    refresh_interval_hours: float = 12.0
+    warning_age_days: float = TLE_WARNING_AGE_DAYS
+    stale_age_days: float = TLE_STALE_AGE_DAYS
+    last_refresh: Optional[datetime] = None
+
+    def next_refresh_time(self) -> Optional[datetime]:
+        if self.last_refresh is None:
+            return None
+        return self.last_refresh + timedelta(hours=self.refresh_interval_hours)
+
+    def should_refresh(self, loaded_tles: list[TLEAgeInfo], at_time: Optional[datetime] = None) -> bool:
+        at_time = at_time or datetime.now(timezone.utc)
+        next_refresh = self.next_refresh_time()
+        if next_refresh is None or at_time >= next_refresh:
+            return True
+        return any(tle.age_days >= self.warning_age_days for tle in loaded_tles)
+
+
+def tle_epoch_from_line1(line1: str) -> datetime:
+    """Parse the epoch from TLE line 1."""
+    raw = line1[18:32].strip()
+    year = int(raw[:2])
+    year += 1900 if year >= 57 else 2000
+    day_of_year = float(raw[2:])
+    return datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=day_of_year - 1)
+
+
+def classify_tle_staleness(age_days: float) -> str:
+    if age_days >= TLE_EXPIRED_AGE_DAYS:
+        return "expired"
+    if age_days >= TLE_STALE_AGE_DAYS:
+        return "stale"
+    if age_days >= TLE_WARNING_AGE_DAYS:
+        return "warning"
+    return "fresh"
+
+
 class OrbitalPredictor:
     """
     High-performance satellite pass predictor using SGP4/SDP4.
@@ -126,6 +180,8 @@ class OrbitalPredictor:
     def __init__(self, observer: GroundStation):
         self.observer = observer
         self._satellites: dict[int, tuple[str, Satrec]] = {}
+        self._tle_epochs: dict[int, datetime] = {}
+        self.refresh_scheduler = TLERefreshScheduler()
 
     def load_tle(self, name: str, tle_line1: str, tle_line2: str) -> int:
         """
@@ -135,6 +191,8 @@ class OrbitalPredictor:
         sat = Satrec.twoline2rv(tle_line1, tle_line2, WGS72)
         norad_id = sat.satnum
         self._satellites[norad_id] = (name, sat)
+        self._tle_epochs[norad_id] = tle_epoch_from_line1(tle_line1)
+        self.refresh_scheduler.last_refresh = datetime.now(timezone.utc)
         return norad_id
 
     def load_tle_file(self, filepath: str) -> list[int]:
@@ -154,6 +212,51 @@ class OrbitalPredictor:
                 i += 1
 
         return loaded
+
+    def tle_age_info(
+        self,
+        norad_id: int,
+        at_time: Optional[datetime] = None,
+    ) -> TLEAgeInfo:
+        """Return age and staleness state for a loaded TLE."""
+        if norad_id not in self._satellites or norad_id not in self._tle_epochs:
+            raise ValueError(f"Satellite {norad_id} not loaded")
+        at_time = at_time or datetime.now(timezone.utc)
+        if at_time.tzinfo is None:
+            at_time = at_time.replace(tzinfo=timezone.utc)
+        name, _ = self._satellites[norad_id]
+        epoch = self._tle_epochs[norad_id]
+        age_days = (at_time - epoch).total_seconds() / SECONDS_PER_DAY
+        staleness = classify_tle_staleness(age_days)
+        warning = ""
+        if staleness == "warning":
+            warning = f"TLE for {name} is {age_days:.1f} days old; refresh soon."
+        elif staleness == "stale":
+            warning = f"TLE for {name} is stale at {age_days:.1f} days old; pass times may drift by minutes."
+        elif staleness == "expired":
+            warning = f"TLE for {name} is expired at {age_days:.1f} days old; do not trust pass predictions."
+        return TLEAgeInfo(
+            satellite_name=name,
+            norad_id=norad_id,
+            epoch=epoch,
+            age_days=age_days,
+            staleness=staleness,
+            warning=warning,
+        )
+
+    def tle_age_warnings(self, at_time: Optional[datetime] = None) -> list[str]:
+        """Return human-readable warnings for loaded stale TLEs."""
+        warnings = []
+        for norad_id in self._satellites:
+            info = self.tle_age_info(norad_id, at_time=at_time)
+            if info.warning:
+                warnings.append(info.warning)
+        return warnings
+
+    def should_refresh_tles(self, at_time: Optional[datetime] = None) -> bool:
+        """Return True when the scheduler or age thresholds require a refresh."""
+        infos = [self.tle_age_info(norad_id, at_time=at_time) for norad_id in self._satellites]
+        return self.refresh_scheduler.should_refresh(infos, at_time=at_time)
 
     def _propagate(self, sat: Satrec, dt: datetime) -> Optional[np.ndarray]:
         """Propagate satellite to given time, return ECEF position (km) or None."""

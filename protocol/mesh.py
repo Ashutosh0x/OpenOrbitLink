@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Optional, List, Dict
 
+from .license import LicenseGate
+from .packet import TransmitBand
+
 
 class NodeCapability(IntEnum):
     """Capabilities a mesh node can advertise."""
@@ -36,6 +39,9 @@ class MeshNode:
     hop_count: int = 0                # Hops from this node
     has_satellite_access: bool = False
     has_internet: bool = False
+    callsign: str = ""
+    license_confirmed: bool = False
+    bands: tuple[TransmitBand, ...] = (TransmitBand.ISM,)
     latitude: float = 0.0
     longitude: float = 0.0
     battery_percent: int = 100
@@ -52,6 +58,12 @@ class MeshNode:
         age = time.time() - self.last_seen
         freshness = max(0, 1 - age / 600)
         return 0.6 * rssi_score + 0.4 * freshness
+
+    def can_transmit_on(self, band: TransmitBand, encrypted: bool = False) -> bool:
+        if band not in self.bands:
+            return False
+        gate = LicenseGate(self.callsign, license_confirmed=self.license_confirmed)
+        return gate.authorize(band, encrypted=encrypted).allowed
 
 
 @dataclass
@@ -78,9 +90,17 @@ class MeshRouter:
     Uses a simplified distance-vector protocol with satellite-awareness.
     """
 
-    def __init__(self, local_id: bytes, capabilities: int = 0x41):
+    def __init__(
+        self,
+        local_id: bytes,
+        capabilities: int = 0x41,
+        callsign: str = "",
+        license_confirmed: bool = False,
+    ):
         self.local_id = local_id
         self.capabilities = capabilities
+        self.callsign = callsign
+        self.license_gate = LicenseGate(callsign, license_confirmed=license_confirmed)
         self.neighbors: Dict[bytes, MeshNode] = {}
         self.routing_table: Dict[bytes, RouteEntry] = {}
         self._message_seen: set = set()  # Dedup by hash
@@ -114,6 +134,8 @@ class MeshRouter:
         destination_id: Optional[bytes] = None,
         satellite_visible: bool = False,
         priority: int = 2,
+        transmit_band: TransmitBand | str = TransmitBand.ISM,
+        encrypted: bool = False,
     ) -> Optional[str]:
         """
         Determine best routing action for a message.
@@ -124,6 +146,10 @@ class MeshRouter:
         - "store" — store locally for later
         """
         self.remove_stale_neighbors()
+        band = TransmitBand.from_value(transmit_band)
+        local_decision = self.license_gate.authorize(band, encrypted=encrypted)
+        if not local_decision.allowed:
+            return "blocked:" + local_decision.reason
 
         # Strategy 1: Direct satellite if we can
         has_tx = bool(self.capabilities & NodeCapability.SDR_TRANSMIT)
@@ -134,7 +160,7 @@ class MeshRouter:
         # Strategy 2: Find neighbor with satellite access
         sat_neighbors = [
             n for n in self.neighbors.values()
-            if n.is_alive and n.has_satellite_access
+            if n.is_alive and n.has_satellite_access and n.can_transmit_on(band, encrypted=encrypted)
         ]
         if sat_neighbors:
             best = max(sat_neighbors, key=lambda n: n.link_quality)
@@ -143,7 +169,11 @@ class MeshRouter:
         # Strategy 3: Find neighbor closer to a ground station
         gs_neighbors = [
             n for n in self.neighbors.values()
-            if n.is_alive and (n.capabilities & NodeCapability.GROUND_STATION)
+            if (
+                n.is_alive
+                and (n.capabilities & NodeCapability.GROUND_STATION)
+                and n.can_transmit_on(band, encrypted=encrypted)
+            )
         ]
         if gs_neighbors:
             best = max(gs_neighbors, key=lambda n: n.link_quality)
@@ -152,7 +182,7 @@ class MeshRouter:
         # Strategy 4: Find any relay-capable neighbor (flood toward gateway)
         relay_neighbors = [
             n for n in self.neighbors.values()
-            if n.is_alive and (n.capabilities & NodeCapability.LORA_RELAY)
+            if n.is_alive and (n.capabilities & NodeCapability.LORA_RELAY) and n.can_transmit_on(band, encrypted=encrypted)
         ]
         if relay_neighbors:
             best = max(relay_neighbors, key=lambda n: n.link_quality)
@@ -178,6 +208,7 @@ class MeshRouter:
         return {
             "local_id": self.local_id.hex(),
             "capabilities": self.capabilities,
+            "callsign": self.callsign,
             "total_neighbors": len(self.neighbors),
             "alive_neighbors": len(alive),
             "routes": len(self.routing_table),
