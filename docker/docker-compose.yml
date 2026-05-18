@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  ground-station:
+    build:
+      context: ..
+      dockerfile: docker/ground-station/Dockerfile
+    container_name: freesat-ground-station
+    restart: unless-stopped
+    ports:
+      - "50051:50051"
+    volumes:
+      - gs-data:/app/data
+      - gs-observations:/app/observations
+      - gs-logs:/app/logs
+    environment:
+      - FREESAT_STATION_ID=FS-GS-001
+      - FREESAT_LAT=28.6139
+      - FREESAT_LON=77.2090
+    # Uncomment to pass RTL-SDR USB device:
+    # devices:
+    #   - /dev/bus/usb:/dev/bus/usb
+
+  simulation:
+    build:
+      context: ..
+      dockerfile: docker/simulation/Dockerfile
+    container_name: freesat-simulation
+    volumes:
+      - sim-results:/app/results
+
+volumes:
+  gs-data:
+  gs-observations:
+  gs-logs:
+  sim-results:

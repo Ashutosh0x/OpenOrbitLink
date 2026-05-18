@@ -1,0 +1,28 @@
+[package]
+name = "freesat-protocol"
+version = "0.1.0"
+edition = "2021"
+authors = ["FreeSat Research Initiative"]
+description = "FreeSat satellite communication protocol - packet encoding, routing, DTN"
+license = "GPL-3.0"
+repository = "https://github.com/freesat-project/freesat"
+
+[lib]
+name = "freesat_protocol"
+crate-type = ["lib", "cdylib"]  # cdylib for Android JNI
+
+[dependencies]
+crc = "3.0"
+sha2 = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+log = "0.4"
+
+[dev-dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Common RTL-SDR / Realtek RTL2832U USB IDs. -->
+    <usb-device vendor-id="3034" product-id="10290" />
+</resources>

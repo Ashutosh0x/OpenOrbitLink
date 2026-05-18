@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package OpenOrbitLink;
+
+option java_package = "org.freesat.grpc";
+option java_multiple_files = true;
+
+// ─── OpenOrbitLink Ground Station gRPC Service ───────────────────────────────
+// Inspired by Starlink's SXGrpc module architecture.
+// Provides telemetry streaming, packet events, and antenna control
+// between the Android app and a Raspberry Pi ground station.
+
+service OpenOrbitLinkGroundStation {
+  // Unary: Get current station status
+  rpc GetStatus (StatusRequest) returns (StationStatus);
+
+  // Unary: Get current telemetry snapshot
+  rpc GetTelemetry (TelemetryRequest) returns (TelemetryResponse);
+
+  // Server streaming: Live decoded packet feed
+  rpc StreamPackets (PacketStreamRequest) returns (stream PacketEvent);
+
+  // Server streaming: Live RF waterfall data
+  rpc StreamWaterfall (WaterfallRequest) returns (stream WaterfallFrame);
+
+  // Unary: Send antenna control command
+  rpc ControlAntenna (AntennaCommand) returns (AntennaResponse);
+
+  // Unary: Set receiver frequency
+  rpc SetFrequency (FrequencyCommand) returns (FrequencyResponse);
+
+  // Unary: Run speed test
+  rpc RunSpeedTest (SpeedTestRequest) returns (SpeedTestResult);
+}
+
+// ─── Station Status ────────────────────────────────────────────────────
+message StatusRequest {}
+
+message StationStatus {
+  string station_id = 1;
+  double latitude = 2;
+  double longitude = 3;
+  double altitude_m = 4;
+  string hardware = 5;           // "RPi 4B + RTL-SDR V4"
+  uint64 uptime_seconds = 6;
+  bool is_tracking = 7;
+  repeated string active_frequencies = 8;
+  float cpu_temp_c = 9;
+  float cpu_usage_pct = 10;
+  uint64 disk_free_bytes = 11;
+  uint64 total_packets_decoded = 12;
+}
+
+// ─── Telemetry ─────────────────────────────────────────────────────────
+message TelemetryRequest {
+  bool include_history = 1;      // Include last 60s of samples
+}
+
+message TelemetryResponse {
+  float signal_strength_dbm = 1;
+  float noise_floor_dbm = 2;
+  float snr_db = 3;
+  float frequency_mhz = 4;
+  float doppler_shift_khz = 5;
+  float ber = 6;
+  uint32 fec_corrections = 7;
+  uint32 packets_received = 8;
+  uint32 packets_errors = 9;
+  float temperature_c = 10;
+  uint64 timestamp_ms = 11;
+  repeated TelemetrySample history = 12;
+}
+
+message TelemetrySample {
+  uint64 timestamp_ms = 1;
+  float snr_db = 2;
+  float signal_dbm = 3;
+  float doppler_khz = 4;
+}
+
+// ─── Packet Events ─────────────────────────────────────────────────────
+message PacketStreamRequest {
+  repeated string frequency_filters = 1;  // Empty = all
+  bool decoded_only = 2;
+}
+
+message PacketEvent {
+  uint64 timestamp_ms = 1;
+  string source_callsign = 2;
+  string destination = 3;
+  string satellite_name = 4;
+  uint32 norad_id = 5;
+  float frequency_mhz = 6;
+  float snr_db = 7;
+  bytes raw_data = 8;
+  string decoded_text = 9;
+  PacketType packet_type = 10;
+  bool crc_valid = 11;
+}
+
+enum PacketType {
+  PACKET_UNKNOWN = 0;
+  PACKET_APRS = 1;
+  PACKET_AX25 = 2;
+  PACKET_CCSDS = 3;
+  PACKET_DTN = 4;
+  PACKET_OPENORBITLINK = 5;
+  PACKET_BEACON = 6;
+}
+
+// ─── Waterfall ─────────────────────────────────────────────────────────
+message WaterfallRequest {
+  float center_frequency_mhz = 1;
+  float bandwidth_khz = 2;
+  uint32 fft_size = 3;           // 256, 512, 1024, 2048
+  uint32 update_rate_hz = 4;     // frames per second
+}
+
+message WaterfallFrame {
+  uint64 timestamp_ms = 1;
+  float center_frequency_mhz = 2;
+  float bandwidth_khz = 3;
+  repeated float power_spectrum_db = 4;  // FFT bins
+}
+
+// ─── Antenna Control ───────────────────────────────────────────────────
+message AntennaCommand {
+  float azimuth_deg = 1;         // 0-360
+  float elevation_deg = 2;       // 0-90
+  TrackingMode mode = 3;
+  uint32 target_norad_id = 4;    // For auto-track mode
+}
+
+enum TrackingMode {
+  MANUAL = 0;
+  AUTO_TRACK = 1;
+  PROGRAM_TRACK = 2;             // Follow TLE prediction
+  PARK = 3;                      // Return to home position
+}
+
+message AntennaResponse {
+  bool success = 1;
+  float current_azimuth = 2;
+  float current_elevation = 3;
+  TrackingMode active_mode = 4;
+}
+
+// ─── Frequency Control ─────────────────────────────────────────────────
+message FrequencyCommand {
+  float frequency_mhz = 1;
+  float bandwidth_khz = 2;
+  string modulation = 3;         // "FM", "BPSK", "AFSK", "USB"
+  float gain_db = 4;
+  bool agc_enabled = 5;
+}
+
+message FrequencyResponse {
+  bool success = 1;
+  float actual_frequency_mhz = 2;
+  float ppm_correction = 3;
+}
+
+// ─── Speed Test ────────────────────────────────────────────────────────
+message SpeedTestRequest {
+  uint32 packet_count = 1;
+  uint32 packet_size_bytes = 2;
+}
+
+message SpeedTestResult {
+  float upload_bps = 1;
+  float download_bps = 2;
+  float avg_latency_ms = 3;
+  float jitter_ms = 4;
+  float packet_loss_pct = 5;
+  uint32 packets_sent = 6;
+  uint32 packets_received = 7;
+}

@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.venv/
+venv/
+env/
+
+# Rust
+protocol-rs/target/
+**/*.rs.bk
+
+# Android
+android/.gradle/
+android/app/.gradle/
+android/app/.cxx/
+android/build/
+android/app/build/
+android/local.properties
+android/*.apk
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Decompiled/vendor dumps - never publish
+starlink_decompiled_apktool/
+starlink_decompiled_jadx/
+Starlink_*.apk
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data files
+data/
+*.tle
+*.wav
+*.raw
+*.db
+*.sqlite
+*.tflite
+
+# Models
+models/
+*.h5
+*.keras
+*.pb
+*.onnx
+
+# GNU Radio
+*.grc~
+*.py~
+
+# Observations
+observations/
+*.log
+
+# OS
+Thumbs.db
+Desktop.ini

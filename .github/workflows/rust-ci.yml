@@ -1,0 +1,41 @@
+name: Rust Protocol CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ['protocol-rs/**']
+  pull_request:
+    branches: [main]
+    paths: ['protocol-rs/**']
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: protocol-rs
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy lints
+        run: cargo clippy -- -D warnings
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Build for Android targets
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi
+          cargo build --target aarch64-linux-android --release || true
