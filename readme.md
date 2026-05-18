@@ -580,6 +580,8 @@ python -m ground_station.grpc_server --station-id FS-GS-YOUR-CALL --port 50051
 
 ### Product and NTN Reference Inputs
 
+The implementation-focused reading order is maintained in [`docs/reading-plan.md`](docs/reading-plan.md).
+
 | Reference | Relevance |
 |:---|:---|
 | Direct-to-Device Connectivity for Integrated Communication, Navigation and Surveillance (IEEE ICNS 2026 / arXiv:2603.11848) | Supports hybrid TN/NTN design, elevation-aware link scoring, and reliability-first ICNS UX |

@@ -1,5 +1,9 @@
 # OpenOrbitLink Research Papers & References
 
+## Recommended Reading Order
+
+Start with [OpenOrbitLink Reading Plan](reading-plan.md). It orders the highest-value standards and papers by implementation impact: BPv7 correctness, BPSec, DTN7, LoRa field behavior, NTN realism, and schedule-aware routing.
+
 ## Foundational Papers (2024-2026)
 
 ### Direct-to-Satellite Communication
