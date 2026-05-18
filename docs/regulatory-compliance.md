@@ -65,6 +65,8 @@ Reference: <https://www.ecfr.gov/current/title-47/chapter-I/subchapter-D/part-97
 | Band policy | `security/__init__.py` |
 | BPSec BCB guard | `security/bpsec.py` |
 | Packet band field | `protocol/packet.py` |
+| Carrier NTN gateway stub | `protocol/ntn.py` |
 | License gate | `protocol/license.py` |
 | Mesh route guard | `protocol/mesh.py` |
+| Android NTN availability probe | `android/app/src/main/java/org/freesat/ntn/NtnCapabilityDetector.kt` |
 | TLE stale warnings | `scripts/fetch_tle.py`, `ai/orbital_predictor.py` |

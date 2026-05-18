@@ -15,7 +15,7 @@ flowchart TB
     Selector --> LoRa["External LoRa ISM node"]
     Selector --> Ham["Licensed amateur station"]
     Selector --> RX["RTL-SDR receive path"]
-    Selector --> NTN["Carrier NTN path"]
+    Selector --> NTN["Carrier NTN gateway"]
     LoRa --> TinyGS["TinyGS / FOSSA-compatible station"]
     Ham --> APRS["AX.25 / APRS"]
     RX --> Decode["NOAA/APRS receive decode"]
@@ -31,7 +31,7 @@ flowchart TB
 | LoRa SX1276/SX126x node | Yes | Yes | Yes on ISM | Regional ISM rules | Best open encrypted messaging path. |
 | ISS APRS / amateur AX.25 | Yes with station | Yes | No | Ham license required | Plaintext APRS-compatible packets only. |
 | TinyGS station | Config-dependent | Yes | API transport only | Depends on TX config | API client and receive/relay integration. |
-| Carrier NTN | Carrier-managed | Carrier-managed | Yes | Carrier subscription | Future/convergence layer, not open RF. |
+| Carrier NTN | Carrier-managed | Carrier-managed | Yes | Carrier subscription | DTN gateway target, not open RF. |
 
 ## Security Boundary
 

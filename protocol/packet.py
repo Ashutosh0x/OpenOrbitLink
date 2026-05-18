@@ -43,7 +43,8 @@ class TransmitBand(IntEnum):
     AMATEUR = 1
     ISM = 2
     LICENSED = 3
-    NTN = 4
+    CARRIER_NTN = 4
+    NTN = 4  # Backward-compatible alias for packets serialized before the explicit carrier name.
     RECEIVE_ONLY = 5
 
     @classmethod
@@ -66,7 +67,7 @@ _TRANSMIT_TO_SECURITY_BAND: dict[TransmitBand, BandType] = {
     TransmitBand.AMATEUR: BandType.AMATEUR,
     TransmitBand.ISM: BandType.ISM,
     TransmitBand.LICENSED: BandType.LICENSED,
-    TransmitBand.NTN: BandType.NTN,
+    TransmitBand.CARRIER_NTN: BandType.NTN,
     TransmitBand.RECEIVE_ONLY: BandType.RECEIVE_ONLY,
 }
 _SECURITY_TO_TRANSMIT_BAND = {value: key for key, value in _TRANSMIT_TO_SECURITY_BAND.items()}
