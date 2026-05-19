@@ -25,8 +25,9 @@
 ![TFLite](https://img.shields.io/badge/TFLite-2.16-FF6F00?logo=tensorflow&logoColor=white)
 ![Codec2](https://img.shields.io/badge/Codec2-700bps-critical)
 ![LoRa](https://img.shields.io/badge/LoRa-868%2F915_MHz-orange)
-![Status](https://img.shields.io/badge/Status-Closed_Beta-yellow)
-![Tests](https://img.shields.io/badge/Tests-37%2F37_Pass-brightgreen)
+![Status](https://img.shields.io/badge/Status-Active_Development-blue)
+![Tests](https://img.shields.io/badge/Tests-99%2F99_Pass-brightgreen)
+![Skyfield](https://img.shields.io/badge/Skyfield-SGP4_Passes-blueviolet)
 
 </p>
 
@@ -98,8 +99,11 @@ graph TB
 
     subgraph "Ground Station - RPi"
         N[gRPC Server<br/>Telemetry Stream] --> O[Relay Daemon<br/>LoRa + SatNOGS]
-        O --> P[LoRa Gateway<br/>SX1276 868MHz]
+        O --> P[SX1276 Driver<br/>868MHz LoRa]
         O --> Q[TinyGS Client<br/>Satellite Polling]
+        O --> PS[Pass Scheduler<br/>Skyfield SGP4]
+        O --> DC[Doppler Comp<br/>Freq Correction]
+        O --> IR[Inbox Router<br/>Downlink Decode]
     end
 
     subgraph "Space Segment"
@@ -239,19 +243,24 @@ gantt
     dateFormat YYYY-MM
     axisFormat %b %Y
 
-    section Phase 1 - Closed Beta
+    section Phase 1 - Core Infrastructure
     Auth gate + FastAPI backend     :done, p1a, 2026-05, 2026-06
-    LoRa node as shared service     :active, p1b, 2026-05, 2026-07
     ISM duty cycle enforcement      :done, p1c, 2026-05, 2026-06
-    Offline sim CI validation       :p1d, 2026-06, 2026-07
+    BPv7/BPSec protocol stack       :done, p1e, 2026-05, 2026-06
+    Pass scheduler (Skyfield)       :done, p1f, 2026-05, 2026-06
+    SX1276 LoRa driver              :done, p1g, 2026-05, 2026-06
+    Doppler pre-compensation        :done, p1h, 2026-05, 2026-06
+    DTN routing (spray-and-wait)    :done, p1i, 2026-05, 2026-06
+    E2E simulation test suite       :done, p1j, 2026-05, 2026-06
+    Offline sim CI validation       :done, p1d, 2026-05, 2026-06
 
-    section Phase 2 - Satellite Upgrade
-    Lacuna LoneWhisper integration  :p2a, 2026-07, 2026-09
-    Semtech Gen 4 hardware          :p2b, 2026-07, 2026-10
-    Multi-gateway mesh              :p2c, 2026-08, 2026-10
-    Pass-window scheduler           :p2d, 2026-09, 2026-10
+    section Phase 2 - Hardware Deployment
+    RPi Zero 2W + RA-02 build       :active, p2a, 2026-06, 2026-07
+    Field test (FOSSASAT-2E)        :p2b, 2026-07, 2026-08
+    Lacuna LoneWhisper integration  :p2c, 2026-07, 2026-09
+    Multi-gateway mesh              :p2d, 2026-08, 2026-10
 
-    section Phase 3 - Regulatory
+    section Phase 3 - Regulatory + Scale
     TRAI framework watch            :p3a, 2026-07, 2026-12
     Carrier NTN egress bridge       :p3b, 2026-10, 2027-03
     Scale to 50-200 users           :p3c, 2026-12, 2027-06
@@ -262,10 +271,15 @@ gantt
 | Path | Status | Encryption | License | Notes |
 |:---|:---|:---:|:---:|:---|
 | Android → FastAPI → LoRa node → ISM satellite/ground | **Production MVP** | Yes | Region rules only | JWT auth gate, per-user queues, duty-cycle rate limiting. |
+| Satellite pass scheduling (Skyfield SGP4) | **Implemented** | N/A | N/A | Auto-schedules TX bursts during FOSSASAT-2E / ISS passes. |
+| Doppler pre-compensation | **Implemented** | N/A | N/A | Real-time frequency correction for LEO satellite passes. |
+| SX1276 LoRa driver (HW + simulation) | **Implemented** | N/A | Region rules only | Full async TX/RX with simulation mode for dev. |
+| DTN routing (epidemic/spray-and-wait) | **Implemented** | N/A | N/A | Multi-hop mesh relay with deduplication. |
+| BPv7/BPSec bundle security | **Implemented** | BIB+BCB | Band-aware | RFC 9171/9172 compliant; BCB blocked on amateur bands. |
+| APRS-IS internet bridge | **Implemented** | No | Ham TX required | Callsign validation, passcode computation, ISS fallback. |
 | TinyGS-compatible ground station receive/poll | Adapter added | N/A | No TX license for RX | Use existing station infrastructure. |
 | ISS APRS / amateur AX.25 | Decode and frame helpers | No | Ham TX required | Only valid APRS/AX.25 traffic; not arbitrary encrypted chat. |
 | RTL-SDR V4 | Receive only | N/A | RX usually license-free | Good for NOAA/APRS receive demos, not uplink. |
-| VoIP/PSTN bridge through internet gateway | Architectural option | Internet leg encrypted | Telecom provider required | Needs internet + legal SIP/PSTN trunk. |
 | Carrier NTN (Pixel 9+, Galaxy S25+) | Convergence target | App-layer | Carrier plan required | Closed uplink; OpenOrbitLink bridges DTN → NTN gateway. |
 
 ## Backend API
@@ -283,6 +297,9 @@ The FastAPI backend provides authenticated REST endpoints for the Android app.
 | `GET` | `/api/v1/inbox` | Bearer | Poll received messages |
 | `GET` | `/api/v1/queue` | Bearer | Outbound queue status |
 | `GET` | `/api/v1/status` | Bearer | Station status + duty cycle |
+| `GET` | `/api/v1/passes` | Bearer | Upcoming satellite passes (Skyfield) |
+| `GET` | `/api/v1/passes/next` | Bearer | Next pass ETA + countdown |
+| `GET` | `/api/v1/passes/duty` | Bearer | Current duty cycle budget |
 | `GET` | `/api/v1/health` | — | Health check |
 
 ### Quick Start (Backend)
@@ -356,17 +373,24 @@ eventually egress through a carrier NTN gateway when one is available.
 - **JWT Authentication** -- Invite-code gated registration, bcrypt passwords, Keystore token storage.
 - **Per-User DTN Queues** -- Messages queued in SQLite, transmitted in priority order.
 - **ISM Duty Cycle Enforcement** -- 1% duty cycle rate limiter with per-user fair-share allocation.
+- **Satellite Pass Scheduler** -- Skyfield SGP4 prediction for FOSSASAT-2E, ISS, Dream Big passes.
+- **Doppler Pre-Compensation** -- Real-time frequency correction for LEO passes using range-rate.
+- **SX1276 LoRa Driver** -- Async TX/RX with simulation mode; SPI hardware on RPi Zero 2W.
+- **DTN Routing** -- Epidemic and spray-and-wait strategies with deduplication.
+- **BPv7/BPSec Protocol Stack** -- RFC 9171/9172 compliant bundles with CBOR encoding.
+- **APRS-IS Bridge** -- ISS APRS fallback via internet gateway with callsign validation.
+- **Inbox Router** -- Automatic downlink decode, dedup, and per-user message routing.
+- **Hybrid Voice Codec** -- Adaptive Codec2/Lyra codec stack with neural enhancement.
 - **Regulatory Compliance Logging** -- Every TX logged with user ID, duration, frequency for ISM rules.
-- **Hybrid Voice Codec** -- Adaptive Codec2/Lyra codec stack with neural enhancement (see below).
 - Band-aware packet format with `TransmitBand` and encrypted-payload guard.
 - Security policy that blocks ciphertext on amateur-band transmissions.
 - Local license gate for callsign syntax, operator attestation, and amateur TX.
-- BPv7/BPSec helpers that reject BCB confidentiality blocks on amateur bands.
 - LoRa/FOSSA-sized frame encoder with 80-byte frame limit.
 - TinyGS API client scaffold using Bearer auth and base64 TX frame payloads.
 - TLE fetcher that writes metadata JSON and warns on stale orbital data.
 - Link-budget simulator with honest TX paths and effective throughput analysis.
 - Offline `demo.py` simulation for contributors without RF hardware.
+- **99-test suite** covering E2E simulation, protocol standards, voice pipeline, and rate limiting.
 
 ## Security Model
 
