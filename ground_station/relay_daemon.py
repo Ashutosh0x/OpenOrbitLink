@@ -131,40 +131,42 @@ class SatNOGSIntegration:
         return None
 
 
-class LoRaGateway:
-    """
-    LoRa mesh gateway for last-mile connectivity.
-    Bridges LoRa mesh network to satellite relay.
-    """
+# Import real LoRa driver and pass scheduler
+try:
+    from .lora_driver import SX1276Driver, LoRaConfig
+    HAS_LORA_DRIVER = True
+except ImportError:
+    HAS_LORA_DRIVER = False
 
-    def __init__(self, frequency: int = 868_000_000, spreading_factor: int = 12):
-        self.frequency = frequency
-        self.sf = spreading_factor
-        self._connected = False
-        self._received_packets: list[bytes] = []
+try:
+    from scripts.pass_scheduler import PassScheduler
+    HAS_PASS_SCHEDULER = True
+except ImportError:
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scripts.pass_scheduler import PassScheduler
+        HAS_PASS_SCHEDULER = True
+    except ImportError:
+        HAS_PASS_SCHEDULER = False
 
-    async def start(self):
-        """Initialize LoRa gateway hardware."""
-        logger.info(f"LoRa Gateway starting on {self.frequency/1e6:.1f} MHz, SF{self.sf}")
-        # In production: initialize SX1276 via SPI or serial
-        self._connected = True
-        logger.info("LoRa Gateway ready (simulation mode)")
+try:
+    from .doppler import DopplerCompensator
+    HAS_DOPPLER = True
+except ImportError:
+    HAS_DOPPLER = False
 
-    async def receive(self) -> Optional[bytes]:
-        """Receive a packet from LoRa mesh network."""
-        if self._received_packets:
-            return self._received_packets.pop(0)
-        return None
+try:
+    from .pass_integration import PassTransmitter, DutyCycleTracker
+    HAS_PASS_INTEGRATION = True
+except ImportError:
+    HAS_PASS_INTEGRATION = False
 
-    async def transmit(self, data: bytes) -> bool:
-        """Transmit a packet to LoRa mesh network."""
-        if not self._connected:
-            return False
-        logger.debug(f"LoRa TX: {len(data)} bytes")
-        return True
-
-    async def stop(self):
-        self._connected = False
+try:
+    from .inbox_router import InboxRouter
+    HAS_INBOX_ROUTER = True
+except ImportError:
+    HAS_INBOX_ROUTER = False
 
 
 class GroundStationDaemon:
@@ -184,7 +186,6 @@ class GroundStationDaemon:
     def __init__(self, config: GroundStationConfig):
         self.config = config
         self.satnogs = SatNOGSIntegration()
-        self.lora = LoRaGateway(config.lora_frequency)
         self._running = False
         self._relay_buffer: list[bytes] = []
         self._stats = {
@@ -195,26 +196,71 @@ class GroundStationDaemon:
             "start_time": 0,
         }
 
+        # Initialize LoRa driver (real or simulation)
+        if HAS_LORA_DRIVER:
+            lora_config = LoRaConfig(
+                frequency_hz=config.lora_frequency,
+                spreading_factor=12,
+                tx_power_dbm=14,
+            )
+            self.lora = SX1276Driver(lora_config)
+        else:
+            self.lora = None
+
+        # Initialize pass scheduler
+        self.pass_scheduler = None
+        if HAS_PASS_SCHEDULER:
+            tle_path = str(Path(config.db_path).parent / "data" / "openorbitlink_satellites.tle")
+            if Path(tle_path).exists():
+                self.pass_scheduler = PassScheduler(
+                    tle_path=tle_path,
+                    observer_lat=config.latitude,
+                    observer_lon=config.longitude,
+                    observer_alt=config.altitude_m,
+                )
+            else:
+                logger.warning(f"TLE file not found: {tle_path}. Pass prediction disabled.")
+
+        # Initialize Doppler compensator
+        self.doppler = None
+        if HAS_DOPPLER and self.pass_scheduler:
+            self.doppler = DopplerCompensator(
+                self.pass_scheduler,
+                carrier_freq_hz=config.lora_frequency,
+            )
+
+        # Initialize duty cycle tracker
+        self.duty_cycle = DutyCycleTracker() if HAS_PASS_INTEGRATION else None
+
+        # Initialize inbox router
+        self.inbox_router = None
+        if HAS_INBOX_ROUTER:
+            self.inbox_router = InboxRouter(backend_url="http://localhost:8000")
+
     async def start(self):
         """Start the ground station daemon."""
         logger.info("=" * 60)
-        logger.info(f"OpenOrbitLink Ground Station — {self.config.station_id}")
+        logger.info(f"OpenOrbitLink Ground Station -- {self.config.station_id}")
         logger.info(f"Location: ({self.config.latitude:.4f}, {self.config.longitude:.4f})")
         logger.info(f"SDR: {self.config.sdr_device}")
+        logger.info(f"LoRa: {'SX1276 driver' if self.lora else 'disabled'}")
+        logger.info(f"Pass Scheduler: {'active' if self.pass_scheduler else 'disabled'}")
+        logger.info(f"Doppler: {'active' if self.doppler else 'disabled'}")
         logger.info(f"Frequencies: {len(self.config.frequencies)} monitored")
         logger.info("=" * 60)
 
         self._running = True
         self._stats["start_time"] = time.time()
 
-        # Initialize subsystems
-        if self.config.lora_gateway:
-            await self.lora.start()
+        # Initialize LoRa hardware
+        if self.lora:
+            await self.lora.init()
 
         # Start main loops
         tasks = [
+            asyncio.create_task(self._satellite_pass_loop()),
             asyncio.create_task(self._lora_receive_loop()),
-            asyncio.create_task(self._satellite_monitor_loop()),
+            asyncio.create_task(self._downlink_poll_loop()),
             asyncio.create_task(self._status_report_loop()),
         ]
 
@@ -224,29 +270,148 @@ class GroundStationDaemon:
             logger.info("Ground station shutting down...")
         finally:
             self._running = False
-            await self.lora.stop()
+            if self.lora:
+                await self.lora.shutdown()
 
     async def _lora_receive_loop(self):
         """Listen for incoming LoRa mesh packets."""
+        if not self.lora:
+            return
         while self._running:
-            packet = await self.lora.receive()
+            packet = await self.lora.receive(timeout_ms=1000)
             if packet:
                 self._stats["packets_received"] += 1
-                self._relay_buffer.append(packet)
-                logger.info(f"LoRa RX: {len(packet)} bytes (buffer: {len(self._relay_buffer)})")
-            await asyncio.sleep(0.1)
+                self._relay_buffer.append(packet.data)
+                logger.info(
+                    f"LoRa RX: {len(packet.data)} bytes "
+                    f"RSSI={packet.rssi:.0f}dBm SNR={packet.snr:.1f}dB "
+                    f"(buffer: {len(self._relay_buffer)})"
+                )
+            await asyncio.sleep(0.05)
 
-    async def _satellite_monitor_loop(self):
-        """Monitor satellite passes and relay buffered messages."""
+    async def _satellite_pass_loop(self):
+        """Monitor satellite passes and burst-transmit during windows."""
+        if not self.pass_scheduler:
+            logger.info("Pass scheduler not available, falling back to SatNOGS polling")
+            while self._running:
+                if self.config.satnogs_enabled:
+                    observations = await self.satnogs.get_scheduled_observations()
+                    if observations:
+                        logger.info(f"Next {len(observations)} SatNOGS observations scheduled")
+                await asyncio.sleep(60)
+            return
+
+        target_sats = ["FOSSASAT", "ISS"]
+
         while self._running:
-            # Check for scheduled observations
-            if self.config.satnogs_enabled:
-                observations = await self.satnogs.get_scheduled_observations()
-                if observations:
-                    logger.info(f"Next {len(observations)} SatNOGS observations scheduled")
+            for sat_name in target_sats:
+                should_tx, current_pass = self.pass_scheduler.should_transmit_now(sat_name)
 
-            # Simulate satellite pass check every 60 seconds
-            await asyncio.sleep(60)
+                if should_tx and current_pass and self._relay_buffer:
+                    logger.info(
+                        f"** SATELLITE PASS: {current_pass.satellite_name} "
+                        f"El={current_pass.max_elevation_deg:.1f}d "
+                        f"Duration={current_pass.duration_s:.0f}s **"
+                    )
+                    self._stats["satellite_passes"] += 1
+
+                    # Burst transmit during pass
+                    await self._burst_transmit(
+                        current_pass.satellite_name,
+                        current_pass.duration_s,
+                    )
+
+            # Report next pass ETA
+            for sat_name in target_sats:
+                eta = self.pass_scheduler.time_to_next_pass(sat_name)
+                if eta is not None and eta > 0:
+                    logger.debug(f"Next {sat_name} pass in {eta/60:.0f} min")
+
+            await asyncio.sleep(30)  # Check every 30 seconds
+
+    async def _burst_transmit(self, satellite_name: str, duration_s: float):
+        """Burst-transmit buffered packets during a satellite pass."""
+        if not self.lora or not self._relay_buffer:
+            return
+
+        start = time.time()
+        sent = 0
+        failed = 0
+
+        while self._relay_buffer and (time.time() - start) < duration_s:
+            data = self._relay_buffer[0]
+
+            # Compute Doppler offset
+            freq_offset = 0.0
+            if self.doppler:
+                freq_offset = self.doppler.frequency_offset_at(satellite_name)
+
+            # Check duty cycle
+            if self.duty_cycle and not self.duty_cycle.can_transmit(2.0):  # ~2s per packet
+                logger.warning("Duty cycle budget exhausted")
+                break
+
+            result = await self.lora.transmit(data[:80], freq_offset)
+            if hasattr(result, 'status') and result.status == 0:  # SUCCESS
+                self._relay_buffer.pop(0)
+                sent += 1
+                self._stats["packets_relayed"] += 1
+                if self.duty_cycle:
+                    self.duty_cycle.record_tx(result.airtime_ms / 1000.0)
+            else:
+                failed += 1
+                self._relay_buffer.pop(0)  # Drop failed packet after attempt
+
+            await asyncio.sleep(0.2)  # Inter-packet gap
+
+        logger.info(f"Burst TX complete: sent={sent} failed={failed} remaining={len(self._relay_buffer)}")
+
+    async def _downlink_poll_loop(self):
+        """Poll for satellite downlink packets and route to inboxes."""
+        if not self.inbox_router:
+            return
+
+        from .tinygs_client import TinyGSClient
+        tinygs = TinyGSClient()
+
+        while self._running:
+            try:
+                # Adaptive polling: faster during passes, slower between
+                is_pass = False
+                if self.pass_scheduler:
+                    for sat in ["FOSSASAT", "ISS"]:
+                        should_tx, _ = self.pass_scheduler.should_transmit_now(sat)
+                        if should_tx:
+                            is_pass = True
+                            break
+
+                interval = 30.0 if is_pass else 300.0
+
+                packets = tinygs.receive_packets(
+                    since_timestamp=time.time() - interval * 2,
+                    limit=20,
+                )
+
+                for pkt in packets:
+                    import base64
+                    raw_b64 = pkt.get("data", pkt.get("frame", ""))
+                    if raw_b64:
+                        try:
+                            packet_data = base64.b64decode(raw_b64)
+                            sat_name = pkt.get("satellite", "unknown")
+                            rssi = float(pkt.get("rssi", 0))
+                            snr = float(pkt.get("snr", 0))
+                            await self.inbox_router.route_packet(
+                                packet_data, sat_name, rssi, snr
+                            )
+                        except Exception:
+                            pass
+
+                await asyncio.sleep(interval)
+
+            except Exception as e:
+                logger.error(f"Downlink poll error: {e}")
+                await asyncio.sleep(60)
 
     async def _status_report_loop(self):
         """Periodic status reporting."""
