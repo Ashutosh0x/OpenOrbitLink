@@ -11,6 +11,13 @@ import struct
 import numpy as np
 from typing import Optional, List
 
+from protocol.aprs import (
+    AX25Address,
+    build_ax25_ui_frame as _build_ax25_ui_frame,
+    encode_ax25_address as _encode_ax25_address,
+    parse_callsign,
+)
+
 
 # ─── Audio Utilities ────────────────────────────────────────────────────────
 
@@ -132,15 +139,7 @@ def verify_parity(data: bytes, parity: bytes) -> int:
 
 def encode_ax25_address(callsign: str, ssid: int = 0, last: bool = False) -> bytes:
     """Encode a callsign into AX.25 address field (7 bytes)."""
-    call = callsign.upper().ljust(6)[:6]
-    addr = bytearray()
-    for c in call:
-        addr.append(ord(c) << 1)
-    ssid_byte = (ssid << 1) | 0x60
-    if last:
-        ssid_byte |= 0x01
-    addr.append(ssid_byte)
-    return bytes(addr)
+    return _encode_ax25_address(AX25Address(callsign.upper(), ssid), last=last)
 
 
 def build_ax25_ui_frame(source: str, dest: str, payload: bytes) -> bytes:
@@ -148,13 +147,6 @@ def build_ax25_ui_frame(source: str, dest: str, payload: bytes) -> bytes:
     Build a simple AX.25 UI (Unnumbered Information) frame.
     Used for ISS APRS digipeater communication.
     """
-    frame = bytearray()
-    frame.extend(b'\x7E')  # Flag
-    frame.extend(encode_ax25_address(dest, last=False))
-    frame.extend(encode_ax25_address(source, last=True))
-    frame.append(0x03)  # Control: UI frame
-    frame.append(0xF0)  # PID: no layer 3
-    frame.extend(payload)
-    # FCS would go here in production (CRC-16 CCITT)
-    frame.extend(b'\x7E')  # Flag
-    return bytes(frame)
+    parse_callsign(source)
+    parse_callsign(dest)
+    return _build_ax25_ui_frame(source, dest, payload)

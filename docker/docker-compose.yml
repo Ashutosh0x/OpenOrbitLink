@@ -1,11 +1,32 @@
 version: '3.8'
 
 services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    container_name: openorbitlink-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-data:/app/data
+    environment:
+      - OOL_JWT_SECRET=change-me-in-production-use-openssl-rand-base64-64
+      - OOL_STATION_ID=FS-GS-001
+      - OOL_STATION_LAT=28.6139
+      - OOL_STATION_LON=77.2090
+      - OOL_DATABASE_URL=sqlite+aiosqlite:///./data/openorbitlink.db
+      - OOL_INVITE_CODE_REQUIRED=true
+      - OOL_DEFAULT_INVITE_CODES=BETA-OOL-2026,ORBIT-ALPHA-01,DTN-TESTER-KEY
+    depends_on:
+      - ground-station
+
   ground-station:
     build:
       context: ..
       dockerfile: docker/ground-station/Dockerfile
-    container_name: freesat-ground-station
+    container_name: openorbitlink-ground-station
     restart: unless-stopped
     ports:
       - "50051:50051"
@@ -25,11 +46,12 @@ services:
     build:
       context: ..
       dockerfile: docker/simulation/Dockerfile
-    container_name: freesat-simulation
+    container_name: openorbitlink-simulation
     volumes:
       - sim-results:/app/results
 
 volumes:
+  backend-data:
   gs-data:
   gs-observations:
   gs-logs:

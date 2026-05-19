@@ -25,6 +25,10 @@ from typing import Optional, Callable
 
 from security import BandType
 from .packet import OpenOrbitLinkPacket, PayloadType, OpenOrbitLinkProtocol, TransmitBand
+from .voice_transport import (
+    VoiceMessageMeta, VoiceChunk, VoiceCodecMode,
+    voice_chunks_to_bundles, estimate_lora_airtime, fits_duty_cycle,
+)
 
 
 class BundleState(IntEnum):
@@ -272,6 +276,61 @@ class DTNEngine:
         """Queue emergency SOS - highest priority."""
         packet = self.protocol.create_sos(lat, lon, message, band=band)
         return self.queue_message(packet, band=band)
+
+    def queue_voice(
+        self,
+        meta: VoiceMessageMeta,
+        chunks: list[VoiceChunk],
+        destination: str = "",
+        band: TransmitBand | BandType | str = TransmitBand.ISM,
+        used_airtime_s: float = 0.0,
+    ) -> list[str]:
+        """
+        Queue a voice message for DTN transmission.
+
+        Voice messages are treated as a burst: all chunks are queued
+        together with voice priority (1 = between SOS and text).
+
+        Performs airtime budget check before queueing. Returns empty
+        list if message doesn't fit in ISM duty cycle budget.
+
+        Args:
+            meta: Voice message metadata
+            chunks: Pre-chunked voice data
+            destination: Recipient node ID
+            band: Transmit band
+            used_airtime_s: Already-used airtime in current window
+
+        Returns:
+            List of bundle IDs for all queued packets
+        """
+        # Check duty cycle budget
+        avg_chunk_bytes = 80  # Worst case
+        if not fits_duty_cycle(
+            len(chunks), avg_chunk_bytes, used_airtime_s
+        ):
+            return []  # Doesn't fit — caller should inform user
+
+        # Convert chunks to protocol packets
+        device_id = self.protocol.device_id
+        tx_band = TransmitBand.from_value(band)
+        packets = voice_chunks_to_bundles(meta, chunks, device_id, tx_band)
+
+        # Queue all packets as a burst group
+        bundle_ids: list[str] = []
+        for i, packet in enumerate(packets):
+            bundle_id = self.queue_message(packet, destination, band=band)
+            bundle_ids.append(bundle_id)
+
+        return bundle_ids
+
+    def estimate_voice_airtime(
+        self,
+        num_chunks: int,
+        chunk_bytes: int = 80,
+    ) -> float:
+        """Estimate LoRa airtime for a voice message in seconds."""
+        return estimate_lora_airtime(num_chunks, chunk_bytes)
 
     async def transmission_window(self, duration_seconds: float = 600.0):
         """

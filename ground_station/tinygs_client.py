@@ -109,3 +109,58 @@ class TinyGSClient:
         if not result.ok:
             raise TinyGSError(f"TinyGS packet poll failed: HTTP {result.status_code}: {result.response}")
         return result.response
+
+    def receive_packets(
+        self,
+        since_timestamp: float | None = None,
+        limit: int = 50,
+        destination_filter: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch received packets with optional timestamp and destination filtering.
+
+        Used by the backend to populate user inboxes from satellite data.
+        Wraps poll_packets with post-processing for the API layer.
+
+        Args:
+            since_timestamp: Unix timestamp; only return packets after this time.
+            limit: Maximum packets to return.
+            destination_filter: If set, only return packets addressed to this ID.
+
+        Returns:
+            List of packet dicts with normalized fields.
+        """
+        raw = self.poll_packets(limit=limit)
+
+        # Normalize response to list
+        if isinstance(raw, str):
+            return []
+        if isinstance(raw, dict):
+            packets = raw.get("packets", raw.get("data", []))
+            if not isinstance(packets, list):
+                return []
+        elif isinstance(raw, list):
+            packets = raw
+        else:
+            return []
+
+        # Filter by timestamp
+        if since_timestamp is not None:
+            packets = [
+                p for p in packets
+                if p.get("timestamp", p.get("time", 0)) >= since_timestamp
+            ]
+
+        # Filter by destination
+        if destination_filter:
+            packets = [
+                p for p in packets
+                if destination_filter in (
+                    p.get("destination", ""),
+                    p.get("dst", ""),
+                    p.get("to", ""),
+                )
+            ]
+
+        return packets[:limit]
+

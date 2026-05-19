@@ -91,6 +91,10 @@ pub struct FreeSatPacket {
 impl FreeSatPacket {
     /// Create a new packet
     pub fn new(device_id: [u8; 6], payload_type: PayloadType, payload: Vec<u8>) -> Self {
+        assert!(
+            payload.len() <= MAX_PAYLOAD_SIZE,
+            "payload exceeds MAX_PAYLOAD_SIZE"
+        );
         let fec = compute_xor_parity(&payload, FEC_SIZE);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -108,6 +112,21 @@ impl FreeSatPacket {
         }
     }
 
+    /// True when the packet must not be relayed again.
+    pub fn hop_limit_exceeded(&self) -> bool {
+        self.hop_count >= self.ttl
+    }
+
+    /// Return a packet copy prepared for the next relay hop.
+    pub fn relay_copy(&self) -> Result<Self, &'static str> {
+        if self.hop_limit_exceeded() {
+            return Err("packet hop limit exceeded");
+        }
+        let mut copy = self.clone();
+        copy.hop_count += 1;
+        Ok(copy)
+    }
+
     /// Generate device ID from a unique string
     pub fn generate_device_id(unique_str: &str) -> [u8; 6] {
         let hash = Sha256::digest(unique_str.as_bytes());
@@ -118,6 +137,10 @@ impl FreeSatPacket {
 
     /// Serialize packet to wire format bytes
     pub fn serialize(&self) -> Vec<u8> {
+        assert!(
+            self.payload.len() <= MAX_PAYLOAD_SIZE,
+            "payload exceeds MAX_PAYLOAD_SIZE"
+        );
         let payload_len = self.payload.len() as u16;
         let mut buf = Vec::with_capacity(MIN_PACKET_SIZE + self.payload.len());
 
@@ -177,6 +200,14 @@ impl FreeSatPacket {
         let hop_count = data[15];
         let ttl = data[16];
         let payload_len = u16::from_be_bytes([data[17], data[18]]) as usize;
+        if payload_len > MAX_PAYLOAD_SIZE {
+            return None;
+        }
+
+        let expected_len = 19 + payload_len + FEC_SIZE + 2;
+        if data.len() != expected_len {
+            return None;
+        }
 
         // Bounds check
         if 19 + payload_len + FEC_SIZE + 2 > data.len() {
@@ -281,5 +312,25 @@ mod tests {
         let id3 = FreeSatPacket::generate_device_id("xyz");
         assert_eq!(id1, id2);
         assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn test_rejects_trailing_bytes() {
+        let id = FreeSatPacket::generate_device_id("strict");
+        let pkt = FreeSatPacket::new(id, PayloadType::Text, b"strict".to_vec());
+        let mut raw = pkt.serialize();
+        raw.push(0);
+        assert!(FreeSatPacket::deserialize(&raw).is_none());
+    }
+
+    #[test]
+    fn test_relay_copy_enforces_hop_limit() {
+        let id = FreeSatPacket::generate_device_id("relay");
+        let mut pkt = FreeSatPacket::new(id, PayloadType::Relay, b"x".to_vec());
+        pkt.hop_count = 9;
+        pkt.ttl = 10;
+        let relayed = pkt.relay_copy().unwrap();
+        assert_eq!(relayed.hop_count, 10);
+        assert!(relayed.relay_copy().is_err());
     }
 }

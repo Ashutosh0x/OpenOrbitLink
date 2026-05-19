@@ -21,6 +21,8 @@ import struct
 
 import numpy as np
 
+from protocol.aprs import APRSParseError, decode_ax25_ui_frame, parse_aprs_info
+
 try:
     from gnuradio import gr, blocks, analog, digital, filter as gr_filter
     import osmosdr
@@ -100,31 +102,19 @@ class AX25Decoder:
         """Parse an AX.25 APRS frame into human-readable format."""
         if len(frame) < 16:
             return None
-
-        # Extract addresses (7 bytes each, shifted left by 1)
-        dest_raw = frame[0:6]
-        src_raw = frame[7:13]
-
-        dest = ''.join(chr(b >> 1) for b in dest_raw).strip()
-        src = ''.join(chr(b >> 1) for b in src_raw).strip()
-
-        # Skip digipeater addresses
-        info_start = 14
-        i = 13
-        while i < len(frame) and not (frame[i] & 0x01):
-            i += 7
-            info_start = i + 1
-
-        # Control + PID
-        if info_start + 2 > len(frame):
+        try:
+            decoded = decode_ax25_ui_frame(frame, validate_fcs=False)
+            aprs = parse_aprs_info(decoded.information)
+        except APRSParseError:
             return None
 
-        info = frame[info_start + 2:]  # Skip control + PID
-
         return {
-            "source": src,
-            "destination": dest,
-            "info": info.decode('ascii', errors='replace'),
+            "source": decoded.source.display,
+            "destination": decoded.destination.display,
+            "digipeaters": [digi.display for digi in decoded.digipeaters],
+            "info": decoded.information.decode('ascii', errors='replace'),
+            "aprs_type": aprs.kind,
+            "fcs_valid": decoded.fcs_valid,
         }
 
 

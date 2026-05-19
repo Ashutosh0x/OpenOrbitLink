@@ -36,6 +36,9 @@ class PayloadType(IntEnum):
     RELAY = 0x04
     ACK = 0x05
     BEACON = 0x06
+    # Voice pipeline subtypes (hybrid codec stack)
+    VOICE_CHUNK = 0x12       # Individual voice chunk within a message
+    VOICE_META = 0x13        # Voice message metadata (codec, total chunks, duration)
 
 
 class TransmitBand(IntEnum):

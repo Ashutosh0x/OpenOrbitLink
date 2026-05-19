@@ -258,13 +258,66 @@ class GroundStationDaemon:
                 f"Status | Uptime: {uptime/3600:.1f}h | "
                 f"RX: {self._stats['packets_received']} | "
                 f"Relayed: {self._stats['packets_relayed']} | "
+                f"API-injected: {self._stats.get('api_injected', 0)} | "
                 f"Buffer: {len(self._relay_buffer)} | "
                 f"Passes: {self._stats['satellite_passes']}"
             )
             await asyncio.sleep(300)  # Every 5 minutes
 
+    # ─── API Integration Methods ────────────────────────────────────────
 
-# ─── CLI ─────────────────────────────────────────────────────────────────────
+    def get_daemon_status(self) -> dict:
+        """Return daemon status for the FastAPI backend."""
+        uptime = time.time() - self._stats["start_time"] if self._stats["start_time"] else 0
+        return {
+            "station_id": self.config.station_id,
+            "latitude": self.config.latitude,
+            "longitude": self.config.longitude,
+            "altitude_m": self.config.altitude_m,
+            "sdr_device": self.config.sdr_device,
+            "lora_frequency_hz": self.config.lora_frequency,
+            "lora_gateway_active": self.config.lora_gateway and self.lora._connected,
+            "satnogs_enabled": self.config.satnogs_enabled,
+            "relay_enabled": self.config.relay_enabled,
+            "running": self._running,
+            "uptime_seconds": uptime,
+            "packets_received": self._stats["packets_received"],
+            "packets_relayed": self._stats["packets_relayed"],
+            "api_injected": self._stats.get("api_injected", 0),
+            "relay_buffer_size": len(self._relay_buffer),
+            "satellite_passes": self._stats["satellite_passes"],
+        }
+
+    def submit_to_relay_buffer(self, data: bytes, user_id: str = "api") -> dict:
+        """
+        Inject a message into the relay buffer from the FastAPI backend.
+
+        Called by backend.tx_queue when a user sends a message via the API.
+        The message will be transmitted during the next satellite pass or
+        LoRa mesh window.
+        """
+        self._relay_buffer.append(data)
+        self._stats["api_injected"] = self._stats.get("api_injected", 0) + 1
+        logger.info(
+            f"API inject: {len(data)} bytes from user '{user_id}' "
+            f"(buffer: {len(self._relay_buffer)})"
+        )
+        return {
+            "accepted": True,
+            "buffer_position": len(self._relay_buffer),
+            "buffer_size": len(self._relay_buffer),
+            "user_id": user_id,
+        }
+
+    def get_relay_buffer_status(self) -> dict:
+        """Return the current relay buffer status for queue monitoring."""
+        return {
+            "buffer_size": len(self._relay_buffer),
+            "max_relay_hops": self.config.max_relay_hops,
+            "relay_enabled": self.config.relay_enabled,
+        }
+
+
 
 def main():
     import argparse
