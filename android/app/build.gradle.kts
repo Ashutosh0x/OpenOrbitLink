@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp") version "1.9.24-1.0.20"
 }
 
 android {
@@ -37,10 +38,20 @@ android {
         manifestPlaceholders["appName"] = "OpenOrbitLink"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("openorbitlink.jks")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "dev-only"
+            keyAlias = "openorbitlink"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "dev-only"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -89,12 +100,27 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // Lifecycle
+    // Lifecycle + ViewModel
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+
+    // Networking — Retrofit + OkHttp
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    // Room — offline-first local database
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
+
+    // Security — encrypted shared preferences for JWT storage
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Maps (satellite tracker)
     implementation("org.osmdroid:osmdroid-android:6.1.18")

@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import org.freesat.auth.ApiClient
 import org.freesat.auth.AuthTokenManager
+import org.freesat.api.ApiClient as OolApiClient
 import org.freesat.ui.theme.*
 
 /**
@@ -62,6 +63,12 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     var showPassword by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Server URL config
+    var showServerConfig by remember { mutableStateOf(false) }
+    var serverUrl by remember { mutableStateOf(OolApiClient.getBaseUrl(context)) }
+    var serverTestResult by remember { mutableStateOf<Boolean?>(null) }
+    var serverTesting by remember { mutableStateOf(false) }
 
     // Orbital animation
     val infiniteTransition = rememberInfiniteTransition(label = "orbit")
@@ -376,8 +383,115 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     }
                 }
 
+                // ── Server URL Config ──
+                Spacer(Modifier.height(16.dp))
+                Surface(
+                    onClick = { showServerConfig = !showServerConfig },
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Transparent
+                ) {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Settings, null, tint = TextSecondary, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Server: ${serverUrl.take(30)}", color = TextSecondary, fontSize = 11.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            if (showServerConfig) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            null, tint = TextSecondary, modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                if (showServerConfig) {
+                    Spacer(Modifier.height(8.dp))
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Text("Backend Server", fontWeight = FontWeight.Bold, color = SatelliteBlue, fontSize = 14.sp)
+                        Text("Enter the IP/URL of your FastAPI backend", color = TextSecondary, fontSize = 11.sp)
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = serverUrl, onValueChange = { serverUrl = it; serverTestResult = null },
+                            label = { Text("Server URL") },
+                            placeholder = { Text("http://192.168.1.100:8000") },
+                            leadingIcon = { Icon(Icons.Filled.Dns, null) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = SatelliteBlue,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                cursorColor = SatelliteBlue,
+                                focusedLabelColor = SatelliteBlue
+                            )
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Test connection
+                            OutlinedButton(
+                                onClick = {
+                                    serverTesting = true
+                                    serverTestResult = null
+                                    scope.launch {
+                                        serverTestResult = OolApiClient.testConnection(serverUrl)
+                                        serverTesting = false
+                                        if (serverTestResult == true) {
+                                            OolApiClient.setBaseUrl(context, serverUrl)
+                                        }
+                                    }
+                                },
+                                enabled = !serverTesting && serverUrl.isNotBlank(),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                if (serverTesting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Filled.NetworkCheck, null, modifier = Modifier.size(16.dp))
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text("Test Connection")
+                            }
+                            // Save
+                            Button(
+                                onClick = {
+                                    OolApiClient.setBaseUrl(context, serverUrl)
+                                    showServerConfig = false
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
+                            ) {
+                                Icon(Icons.Filled.Save, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Save", color = SpaceBlack)
+                            }
+                        }
+                        // Test result
+                        serverTestResult?.let { ok ->
+                            Spacer(Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = (if (ok) SuccessGreen else AlertRed).copy(alpha = 0.1f)
+                            ) {
+                                Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (ok) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                                        null, tint = if (ok) SuccessGreen else AlertRed, modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        if (ok) "Connected! Backend is healthy." else "Cannot reach server. Check URL and ensure backend is running.",
+                                        color = if (ok) SuccessGreen else AlertRed, fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ── Footer info ──
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
                 Text(
                     "Token stored in Android Keystore\nEnd-to-end encrypted • ISM 868 MHz",
                     color = TextSecondary,
