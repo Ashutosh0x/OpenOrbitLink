@@ -168,3 +168,78 @@ if HAS_FASTAPI:
             "count": len(_scheduler.satellites),
             "satellites": _scheduler.list_satellites(),
         }
+
+    # ── Satellite Selection (Connect Feature) ────────────────────
+
+    _selected_satellite: dict = {}
+
+    @router.post("/passes/select")
+    async def select_satellite(
+        satellite_name: str,
+        user_id: str = "default",
+    ):
+        """Select a satellite as the preferred routing target."""
+        _selected_satellite[user_id] = {
+            "satellite": satellite_name,
+            "selected_at": __import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc
+            ).isoformat(),
+        }
+
+        # Get next pass info for this satellite
+        next_pass_info = None
+        if _scheduler:
+            try:
+                p = _scheduler.next_pass(satellite_name)
+                if p:
+                    eta = _scheduler.time_to_next_pass(satellite_name)
+                    next_pass_info = {
+                        "pass": p.to_dict(),
+                        "eta_seconds": eta,
+                        "eta_minutes": round(eta / 60, 1) if eta else None,
+                    }
+            except Exception:
+                pass
+
+        return {
+            "status": "selected",
+            "satellite": satellite_name,
+            "user_id": user_id,
+            "next_pass": next_pass_info,
+            "message": f"Messages will route via {satellite_name}",
+        }
+
+    @router.get("/passes/selected")
+    async def get_selected(user_id: str = "default"):
+        """Get the currently selected satellite for routing."""
+        if user_id not in _selected_satellite:
+            return {"selected": False, "satellite": None}
+
+        selection = _selected_satellite[user_id]
+
+        # Refresh position data
+        position = None
+        if _scheduler:
+            try:
+                eta = _scheduler.time_to_next_pass(selection["satellite"])
+                position = {
+                    "eta_seconds": eta,
+                    "eta_minutes": round(eta / 60, 1) if eta else None,
+                }
+            except Exception:
+                pass
+
+        return {
+            "selected": True,
+            **selection,
+            "current_position": position,
+        }
+
+    @router.post("/passes/deselect")
+    async def deselect_satellite(user_id: str = "default"):
+        """Deselect the current satellite."""
+        prev = _selected_satellite.pop(user_id, None)
+        return {
+            "status": "deselected",
+            "previous": prev["satellite"] if prev else None,
+        }

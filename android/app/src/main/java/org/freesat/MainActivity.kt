@@ -61,15 +61,16 @@ sealed class NavItem(val route: String, val label: String,
                      val group: NavGroup = NavGroup.PRIMARY) {
     // Primary (bottom bar — 5 most used)
     object Messages : NavItem("messaging", "Messages", Icons.Outlined.Chat, Icons.Filled.Chat)
-    object Map : NavItem("map", "Map", Icons.Outlined.Map, Icons.Filled.Map)
+    object Radar : NavItem("radar", "Radar", Icons.Outlined.SatelliteAlt, Icons.Filled.SatelliteAlt)
     object Dashboard : NavItem("dashboard", "Link", Icons.Outlined.Speed, Icons.Filled.Speed)
     object SOS : NavItem("sos", "SOS", Icons.Outlined.Warning, Icons.Filled.Warning)
     object Settings : NavItem("settings", "More", Icons.Outlined.Menu, Icons.Filled.Menu)
 
     // Secondary (accessible from top bar / drawer / More screen)
+    object Map : NavItem("map", "Map", Icons.Outlined.Map, Icons.Filled.Map, NavGroup.SECONDARY)
     object Nearby : NavItem("nearby", "Nearby", Icons.Outlined.Explore, Icons.Filled.Explore, NavGroup.SECONDARY)
     object Call : NavItem("call", "PTT", Icons.Outlined.Call, Icons.Filled.Call, NavGroup.SECONDARY)
-    object Tracker : NavItem("satellite", "Tracker", Icons.Outlined.SatelliteAlt, Icons.Filled.SatelliteAlt, NavGroup.SECONDARY)
+    object Tracker : NavItem("satellite", "Tracker", Icons.Outlined.Bolt, Icons.Filled.Bolt, NavGroup.SECONDARY)
     object Mesh : NavItem("mesh", "Mesh", Icons.Outlined.Hub, Icons.Filled.Hub, NavGroup.SECONDARY)
     object SkyScan : NavItem("skyscan", "Sky Scan", Icons.Outlined.CameraAlt, Icons.Filled.CameraAlt, NavGroup.SECONDARY)
     object Network : NavItem("network", "Network", Icons.Outlined.AccountTree, Icons.Filled.AccountTree, NavGroup.SECONDARY)
@@ -79,8 +80,8 @@ sealed class NavItem(val route: String, val label: String,
 
 enum class NavGroup { PRIMARY, SECONDARY }
 
-val primaryNavItems = listOf(NavItem.Messages, NavItem.Map, NavItem.Dashboard, NavItem.SOS, NavItem.Settings)
-val secondaryNavItems = listOf(NavItem.Nearby, NavItem.Call, NavItem.Tracker, NavItem.Mesh, NavItem.SkyScan, NavItem.Network, NavItem.GroundStation, NavItem.Hardware)
+val primaryNavItems = listOf(NavItem.Messages, NavItem.Radar, NavItem.Dashboard, NavItem.SOS, NavItem.Settings)
+val secondaryNavItems = listOf(NavItem.Map, NavItem.Nearby, NavItem.Call, NavItem.Tracker, NavItem.Mesh, NavItem.SkyScan, NavItem.Network, NavItem.GroundStation, NavItem.Hardware)
 val allNavItems = primaryNavItems + secondaryNavItems
 
 // ─── App Shell ─────────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ fun OpenOrbitLinkApp() {
 
             // Primary screens
             composable("messaging") { MessagingScreen() }
+            composable("radar") { SatelliteRadarScreen() }
             composable("map") { SatelliteMapScreen() }
             composable("dashboard") { LinkDashboardScreen() }
             composable("sos") { EmergencySOSScreen() }
@@ -196,9 +198,11 @@ fun MoreScreen(navController: NavController) {
 
         // Quick access grid
         val hubItems = listOf(
+            Triple(NavItem.Radar, "Real-time satellite radar scanner", SatelliteBlue),
+            Triple(NavItem.Map, "Satellite positions on world map", AccentGradientEnd),
             Triple(NavItem.Nearby, "Nearby passes and best contact windows", SuccessGreen),
             Triple(NavItem.Call, "Half-duplex voice with text fallback", NebulaPurple),
-            Triple(NavItem.Tracker, "Satellite pass predictions", SatelliteBlue),
+            Triple(NavItem.Tracker, "Satellite pass predictions", AccentGradientStart),
             Triple(NavItem.Mesh, "LoRa mesh network", SuccessGreen),
             Triple(NavItem.SkyScan, "AR sky visibility scan", NebulaPurple),
             Triple(NavItem.Network, "Data path visualizer", AccentGradientStart),

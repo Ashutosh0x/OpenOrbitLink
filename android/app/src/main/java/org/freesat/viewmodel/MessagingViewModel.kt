@@ -13,6 +13,7 @@ import org.freesat.api.StationStatus
 import org.freesat.data.MessageEntity
 import org.freesat.data.MessageRepository
 import org.freesat.data.PassEntity
+import org.freesat.data.MessageSyncWorker
 
 /**
  * Main ViewModel for the messaging and dashboard screens.
@@ -25,9 +26,14 @@ class MessagingViewModel(application: Application) : AndroidViewModel(applicatio
 
     companion object {
         private const val TAG = "OpenOrbitLink.VM"
-        private const val INBOX_POLL_MS = 30_000L
-        private const val PASS_POLL_MS = 60_000L
     }
+
+    // Polling intervals based on service mode
+    private val pollIntervals: Map<String, Pair<Long, Long>> = mapOf(
+        "standby" to (300_000L to 600_000L),    // 5min inbox, 10min passes
+        "active" to (30_000L to 60_000L),         // 30s inbox, 60s passes
+        "emergency" to (5_000L to 10_000L),       // 5s inbox, 10s passes
+    )
 
     private val repo = MessageRepository(application)
     private val apiClient = ApiClient.getInstance(application)
@@ -75,11 +81,28 @@ class MessagingViewModel(application: Application) : AndroidViewModel(applicatio
         val failed: Int = 0
     )
 
+    // ── Service Mode ────────────────────────────────────────────
+
+    private val _serviceMode = MutableStateFlow("active")
+    val serviceMode: StateFlow<String> = _serviceMode.asStateFlow()
+
+    private val _connectivityPath = MutableStateFlow("WiFi/Internet")
+    val connectivityPath: StateFlow<String> = _connectivityPath.asStateFlow()
+
+    private val _isOfflineMode = MutableStateFlow(false)
+    val isOfflineMode: StateFlow<Boolean> = _isOfflineMode.asStateFlow()
+
     // ── Init ────────────────────────────────────────────────────
 
     init {
         startPeriodicSync()
         startPassCountdown()
+        // Enqueue background sync worker
+        try {
+            MessageSyncWorker.enqueue(getApplication())
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to enqueue sync worker: ${e.message}")
+        }
     }
 
     // ── Actions ─────────────────────────────────────────────────
@@ -113,22 +136,40 @@ class MessagingViewModel(application: Application) : AndroidViewModel(applicatio
         _error.value = null
     }
 
+    fun setServiceMode(mode: String) {
+        if (mode in listOf("standby", "active", "emergency")) {
+            _serviceMode.value = mode
+            Log.i(TAG, "Service mode set to: $mode")
+            // Restart sync with new intervals
+            startPeriodicSync()
+        }
+    }
+
+    fun setOfflineMode(offline: Boolean) {
+        _isOfflineMode.value = offline
+        if (offline) {
+            _connectivityPath.value = "Offline Queue"
+        }
+    }
+
     // ── Periodic sync ───────────────────────────────────────────
 
     private fun startPeriodicSync() {
-        // Inbox sync every 30s
+        val (inboxMs, passMs) = pollIntervals[_serviceMode.value] ?: (30_000L to 60_000L)
+
+        // Inbox sync
         viewModelScope.launch {
             while (true) {
                 syncAll()
-                delay(INBOX_POLL_MS)
+                delay(inboxMs)
             }
         }
 
-        // Pass sync every 60s
+        // Pass sync
         viewModelScope.launch {
             while (true) {
                 syncPasses()
-                delay(PASS_POLL_MS)
+                delay(passMs)
             }
         }
     }

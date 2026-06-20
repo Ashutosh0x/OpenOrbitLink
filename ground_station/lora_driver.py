@@ -140,6 +140,8 @@ class SX1276Driver:
         self._tx_count: int = 0
         self._rx_count: int = 0
         self._sim_rx_queue: list[bytes] = []
+        self._adaptive_mode: bool = False
+        self._snr_history: list[float] = []
 
     async def init(self) -> bool:
         """
@@ -450,3 +452,105 @@ class SX1276Driver:
 
         t_payload = n_payload * t_sym
         return t_preamble + t_payload
+
+    # -- Adaptive Spreading Factor (Jio-inspired AMC) --
+
+    async def set_adaptive_mode(self, enable: bool = True) -> None:
+        """Enable/disable adaptive SF selection based on link conditions."""
+        self._adaptive_mode = enable
+        logger.info(f"Adaptive mode {'enabled' if enable else 'disabled'}")
+
+    async def select_optimal_sf(self, elevation_deg: float, range_km: float,
+                                 doppler_hz: float = 0) -> int:
+        """Select optimal spreading factor based on current link conditions.
+
+        Uses elevation-aware link budget with Doppler constraint.
+        Inspired by 3GPP NTN Release 19 AMC and Jio beam optimization.
+
+        Args:
+            elevation_deg: Satellite elevation above horizon in degrees
+            range_km: Slant range to satellite in km
+            doppler_hz: Current Doppler shift in Hz
+
+        Returns:
+            Optimal spreading factor (7-12)
+        """
+        import math
+        freq = self.config.frequency_hz
+        dist_m = range_km * 1000
+
+        # Free-space path loss (Friis)
+        fspl_db = 20 * math.log10(max(dist_m, 1)) + 20 * math.log10(freq) - 147.55
+
+        # Atmospheric loss (1/sin(elevation) model)
+        el_rad = math.radians(max(elevation_deg, 1.0))
+        atm_loss = min(0.05 / math.sin(el_rad), 10.0)
+
+        total_loss = fspl_db + atm_loss
+        rx_power = 14.0 + 2.15 - total_loss + 2.0  # TX + TX_ant - loss + RX_ant
+
+        # SF lookup: (sf, sensitivity_dBm, bitrate_bps, doppler_tolerance_hz)
+        sf_table = [
+            (7, -123.0, 5469, 5000),
+            (8, -126.0, 3125, 4000),
+            (9, -129.0, 1758, 3000),
+            (10, -132.0, 977, 2500),
+            (11, -134.5, 537, 2000),
+            (12, -137.0, 293, 1500),
+        ]
+
+        abs_doppler = abs(doppler_hz)
+        for sf, sensitivity, bitrate, doppler_tol in sf_table:
+            margin = rx_power - sensitivity
+            if margin >= 3.0 and abs_doppler <= doppler_tol:
+                logger.info(
+                    f"Adaptive SF: SF{sf} selected (margin={margin:.1f}dB, "
+                    f"bitrate={bitrate}bps, el={elevation_deg:.1f}deg)"
+                )
+                return sf
+
+        logger.info(f"Adaptive SF: SF12 fallback (rx={rx_power:.1f}dBm, el={elevation_deg:.1f}deg)")
+        return 12
+
+    async def apply_adaptive_config(self, elevation_deg: float, range_km: float,
+                                     doppler_hz: float = 0) -> None:
+        """Apply optimal configuration for current link conditions."""
+        if not self._adaptive_mode:
+            return
+
+        optimal_sf = await self.select_optimal_sf(elevation_deg, range_km, doppler_hz)
+        if optimal_sf != self.config.spreading_factor:
+            old_sf = self.config.spreading_factor
+            self.config.spreading_factor = optimal_sf
+            if self.mode == DriverMode.HARDWARE and self._lora:
+                self._lora.setSpreadingFactor(optimal_sf)
+            logger.info(f"SF changed: SF{old_sf} -> SF{optimal_sf}")
+
+    def get_current_throughput(self) -> dict:
+        """Get current throughput metrics based on active configuration."""
+        sf = self.config.spreading_factor
+        bw = self.config.bandwidth_hz
+        cr = self.config.coding_rate
+
+        raw_bitrate = sf * bw / (2 ** sf)
+        coded_bitrate = raw_bitrate * 4 / (4 + cr)
+        airtime_ms = self._estimate_airtime_ms(self.config.max_payload)
+
+        packets_hr = int(36000 / airtime_ms) if airtime_ms > 0 else 0
+        bytes_hr = packets_hr * self.config.max_payload
+
+        return {
+            "spreading_factor": sf,
+            "bandwidth_hz": bw,
+            "coding_rate": f"4/{4+cr}",
+            "raw_bitrate_bps": round(raw_bitrate, 1),
+            "coded_bitrate_bps": round(coded_bitrate, 1),
+            "max_payload_bytes": self.config.max_payload,
+            "airtime_ms": round(airtime_ms, 1),
+            "packets_per_hour": packets_hr,
+            "bytes_per_hour": bytes_hr,
+            "adaptive_mode": self._adaptive_mode,
+            "tx_count": self._tx_count,
+            "rx_count": self._rx_count,
+        }
+

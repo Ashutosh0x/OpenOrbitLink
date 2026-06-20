@@ -8,6 +8,7 @@
     <a href="#architecture">Architecture</a> •
     <a href="#backend-api">Backend API</a> •
     <a href="#android-app">Android App</a> •
+    <a href="#research-paper">Research Paper</a> •
     <a href="#roadmap">Roadmap</a>
   </p>
 </p>
@@ -28,6 +29,12 @@
 ![Status](https://img.shields.io/badge/Status-Active_Development-blue)
 ![Tests](https://img.shields.io/badge/Tests-99%2F99_Pass-brightgreen)
 ![Skyfield](https://img.shields.io/badge/Skyfield-SGP4_Passes-blueviolet)
+![Endpoints](https://img.shields.io/badge/API-31_Endpoints-009688)
+![Compression](https://img.shields.io/badge/Compression-Turbo_5x-ff6f00)
+![SpeedTest](https://img.shields.io/badge/Speed_Test-Starlink_Style-00B4D8)
+![DTN](https://img.shields.io/badge/DTN-BPv7_RFC_9171-purple)
+![Encryption](https://img.shields.io/badge/Encryption-AES--256--GCM-red)
+![Handover](https://img.shields.io/badge/Handover-Predictive-blueviolet)
 
 </p>
 
@@ -40,6 +47,41 @@ It is not a magic phone-to-satellite transmitter. Android phones cannot transmit
 arbitrary VHF/UHF/LoRa RF by themselves, RTL-SDR dongles are receive-only, and
 amateur satellite paths have strict licensing and plaintext rules. This repo now
 treats those constraints as protocol behavior, not footnotes.
+
+## 📄 Research Paper
+
+<p align="center">
+  <a href="docs/openorbitlink_paper.pdf">
+    <img src="https://img.shields.io/badge/📄_Research_Paper-PDF-EC1C24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Research Paper PDF"/>
+  </a>
+  <a href="docs/openorbitlink_paper.tex">
+    <img src="https://img.shields.io/badge/📝_LaTeX_Source-TEX-008080?style=for-the-badge&logo=latex&logoColor=white" alt="LaTeX Source"/>
+  </a>
+</p>
+
+**Title:** *OpenOrbitLink: An Open-Source Framework for Delay-Tolerant Satellite Messaging with Elevation-Aware Rate Adaptation over LoRa LEO Links*
+
+| Paper Details | |
+|---|---|
+| **Author** | Ashutosh Kumar |
+| **Pages** | 12 pages, single-column |
+| **Figures** | 7 TikZ diagrams |
+| **Tables** | 7 data tables |
+| **References** | 22 citations (IEEE, IETF, ETSI, ITU-R) |
+| **Key Contribution** | Elevation-aware rate adaptation algorithm for LoRa LEO links |
+| **Sections** | Architecture, Adaptive Modem, LR-FHSS, Doppler, Security, Compression, Speed Test, Protocol Stack, Energy Analysis, Limitations |
+
+> **Cite as:**
+> ```bibtex
+> @article{kumar2026openorbitlink,
+>   title={OpenOrbitLink: An Open-Source Framework for Delay-Tolerant 
+>          Satellite Messaging with Elevation-Aware Rate Adaptation 
+>          over LoRa LEO Links},
+>   author={Kumar, Ashutosh},
+>   year={2026},
+>   note={Available: github.com/Ashutosh0x/OpenOrbitLink}
+> }
+> ```
 
 ## Tech Stack
 
@@ -74,7 +116,22 @@ treats those constraints as protocol behavior, not footnotes.
 </tr>
 </table>
 
-**Additional:** Jetpack Compose • Material3 • Signal Protocol • AES-256-GCM • BPv7/BPSec • SGP4 • CelesTrak • SatNOGS • Codec2 • Lyra/SoundStream • TFLite NNAPI • Golay FEC • RTL-SDR • Semtech LR2022 • Lacuna Space
+**Additional:** Jetpack Compose • Material3 • Signal Protocol • AES-256-GCM • BPv7 (RFC 9171) • BPSec (RFC 9172) • SGP4 • Skyfield • CelesTrak • SatNOGS • Codec2 • Lyra/SoundStream • TFLite NNAPI • Golay FEC • RTL-SDR • Semtech LR-FHSS • zlib • LZW • LZSS
+
+### Starlink-Inspired Intelligence
+
+<table>
+<tr>
+<td align="center" width="96"><img src="https://img.shields.io/badge/🔄-Handover-blueviolet?style=flat-square" height="28" alt="Handover"/><br><sub><b>Predictive<br>Handover</b></sub></td>
+<td align="center" width="96"><img src="https://img.shields.io/badge/🌐-Mesh-blue?style=flat-square" height="28" alt="Mesh"/><br><sub><b>Multi-Hop<br>DTN Routing</b></sub></td>
+<td align="center" width="96"><img src="https://img.shields.io/badge/📡-Sky_Map-green?style=flat-square" height="28" alt="Sky"/><br><sub><b>Obstruction<br>Analysis</b></sub></td>
+<td align="center" width="96"><img src="https://img.shields.io/badge/⚡-Speed-orange?style=flat-square" height="28" alt="Speed"/><br><sub><b>Speed Test<br>Engine</b></sub></td>
+<td align="center" width="96"><img src="https://img.shields.io/badge/🗜️-Turbo-red?style=flat-square" height="28" alt="Compress"/><br><sub><b>Turbo<br>Compression</b></sub></td>
+<td align="center" width="96"><img src="https://img.shields.io/badge/📊-Stats-teal?style=flat-square" height="28" alt="Stats"/><br><sub><b>Network<br>Statistics</b></sub></td>
+<td align="center" width="96"><img src="https://img.shields.io/badge/📋-Scheduler-purple?style=flat-square" height="28" alt="Scheduler"/><br><sub><b>Pass<br>Scheduler</b></sub></td>
+<td align="center" width="96"><img src="https://img.shields.io/badge/🔐-AES256-darkred?style=flat-square" height="28" alt="AES"/><br><sub><b>E2E<br>Encryption</b></sub></td>
+</tr>
+</table>
 
 ## Architecture
 

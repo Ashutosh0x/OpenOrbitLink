@@ -41,6 +41,15 @@ from .database import (
 )
 from .rate_limiter import duty_cycle_tracker
 from .tx_queue import tx_queue
+from .satellite_radar import (
+    init_radar_engine,
+    radar_websocket_endpoint,
+    router as radar_router,
+)
+from .adaptive_modem import router as modem_router
+from .lr_fhss import router as lr_fhss_router
+from .turbo_compression import compression_router
+from .speed_test import speedtest_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +74,18 @@ async def lifespan(app: FastAPI):
 
     await init_db()
     await tx_queue.start()
+
+    # Initialize satellite radar engine
+    try:
+        radar = init_radar_engine(
+            observer_lat=28.6139,
+            observer_lon=77.2090,
+            observer_alt=216.0,
+        )
+        logger.info(f"Satellite radar: {len(radar.catalog)} satellites loaded")
+    except Exception as e:
+        logger.warning(f"Satellite radar init failed: {e}")
+
     yield
     await tx_queue.stop()
 
@@ -91,6 +112,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register satellite radar router
+app.include_router(radar_router)
+
+# Register adaptive modem & LR-FHSS high-throughput routers
+if modem_router:
+    app.include_router(modem_router)
+    logger.info("Adaptive modem router registered")
+if lr_fhss_router:
+    app.include_router(lr_fhss_router)
+    logger.info("LR-FHSS router registered")
+
+# Register Starlink-inspired feature routers
+app.include_router(compression_router)
+logger.info("Turbo compression router registered (3 endpoints)")
+app.include_router(speedtest_router)
+logger.info("Speed test & network stats router registered (5 endpoints)")
+
+# Register Starlink-inspired intelligence router
+from .starlink_intelligence import starlink_router
+app.include_router(starlink_router)
+logger.info("Starlink intelligence router registered (4 endpoints)")
+
+
+
+# WebSocket for real-time satellite streaming
+@app.websocket("/ws/radar")
+async def ws_radar(websocket):
+    """Real-time satellite position WebSocket (1Hz updates)."""
+    await radar_websocket_endpoint(websocket)
 
 
 # ─── Pydantic Schemas ──────────────────────────────────────────────────
