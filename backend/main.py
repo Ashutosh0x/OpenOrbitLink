@@ -135,6 +135,11 @@ from .starlink_intelligence import starlink_router
 app.include_router(starlink_router)
 logger.info("Starlink intelligence router registered (4 endpoints)")
 
+# Register benchmark suite router
+from .benchmark import benchmark_router
+app.include_router(benchmark_router)
+logger.info("Benchmark suite router registered (3 endpoints)")
+
 
 
 # WebSocket for real-time satellite streaming
