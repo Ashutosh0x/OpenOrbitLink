@@ -140,6 +140,12 @@ from .benchmark import benchmark_router
 app.include_router(benchmark_router)
 logger.info("Benchmark suite router registered (3 endpoints)")
 
+# Register voice messaging & comparison routers
+from .voice_messaging import voice_router, comparison_router
+app.include_router(voice_router)
+app.include_router(comparison_router)
+logger.info("Voice messaging (3) + Starlink comparison (2) routers registered")
+
 
 
 # WebSocket for real-time satellite streaming
