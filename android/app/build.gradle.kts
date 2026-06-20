@@ -17,17 +17,19 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // NDK configuration for Codec2 + DSP
-        externalNativeBuild {
-            cmake {
-                cppFlags += "-std=c++17"
-                arguments += "-DANDROID_STL=c++_shared"
-            }
-        }
+        // NDK configuration for Codec2 + DSP (disabled — uses software mode)
+        // Uncomment after cross-compiling libcodec2 for Android:
+        //   cd codec2-android && ./build_android.sh
+        // externalNativeBuild {
+        //     cmake {
+        //         cppFlags += "-std=c++17"
+        //         arguments += "-DANDROID_STL=c++_shared"
+        //     }
+        // }
 
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
+        // ndk {
+        //     abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        // }
 
         // Build config fields
         buildConfigField("String", "OPENORBITLINK_VERSION", "\"1.0.0\"")
@@ -81,12 +83,14 @@ android {
         jvmTarget = "17"
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
+    // Native build disabled — uses software-mode Codec2
+    // Uncomment after cross-compiling libcodec2:
+    // externalNativeBuild {
+    //     cmake {
+    //         path = file("CMakeLists.txt")
+    //         version = "3.22.1"
+    //     }
+    // }
 }
 
 dependencies {
@@ -118,6 +122,9 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
+
+    // WorkManager — offline message sync
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Security — encrypted shared preferences for JWT storage
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

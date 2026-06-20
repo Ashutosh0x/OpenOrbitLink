@@ -116,7 +116,7 @@ class ApiClient private constructor(context: Context) {
     suspend fun login(username: String, password: String): Result<AuthResponse> {
         return try {
             val response = api.login(LoginRequest(username, password))
-            authManager.saveToken(response.accessToken)
+            authManager.saveToken(response.accessToken, response.username ?: username, response.userId?.hashCode() ?: 0)
             Log.i(TAG, "Login successful for $username")
             Result.success(response)
         } catch (e: Exception) {
@@ -129,7 +129,7 @@ class ApiClient private constructor(context: Context) {
     suspend fun register(username: String, password: String, inviteCode: String): Result<AuthResponse> {
         return try {
             val response = api.register(RegisterRequest(username, password, inviteCode))
-            authManager.saveToken(response.accessToken)
+            authManager.saveToken(response.accessToken, response.username ?: username, response.userId?.hashCode() ?: 0)
             Log.i(TAG, "Registration successful for $username")
             Result.success(response)
         } catch (e: Exception) {

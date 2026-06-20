@@ -3,7 +3,7 @@ package org.freesat.api
 import retrofit2.http.*
 
 /**
- * OpenOrbitLink REST API — matches FastAPI backend at /api/v1/*
+ * OpenOrbitLink REST API — matches FastAPI backend at /api/v1/
  *
  * All authenticated endpoints require Bearer token via OkHttp interceptor.
  */

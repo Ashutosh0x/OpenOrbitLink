@@ -105,7 +105,7 @@ fun ThroughputDashboard() {
             val point = timeline[idx]
             if (adaptiveEnabled) {
                 currentSf = point.sf
-                currentBitrate = point.bitrate
+                currentBitrate = point.bitrateBps
             } else {
                 currentSf = 12
                 currentBitrate = 293
@@ -244,9 +244,9 @@ fun ThroughputDashboard() {
         // Stats row
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val pktHr = if (adaptiveEnabled) (36000 / (if (currentBitrate > 1000) 92 else 2867)).coerceAtMost(240) else 12
-            StatChip("Packets/hr", "$pktHr", Modifier.weight(1f))
-            StatChip("Bytes/hr", "${pktHr * 80}", Modifier.weight(1f))
-            StatChip("Margin", "+${"%.1f".format(currentMargin)} dB", Modifier.weight(1f))
+            Box(Modifier.weight(1f)) { StatChip("Packets/hr", "$pktHr") }
+            Box(Modifier.weight(1f)) { StatChip("Bytes/hr", "${pktHr * 80}") }
+            Box(Modifier.weight(1f)) { StatChip("Margin", "+${"%.1f".format(currentMargin)} dB") }
         }
 
         Spacer(Modifier.height(80.dp))
