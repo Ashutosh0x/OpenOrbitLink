@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,7 +33,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import org.freesat.ui.theme.*
 import org.freesat.ui.screens.*
-import org.freesat.auth.AuthTokenManager
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -88,11 +88,9 @@ val allNavItems = primaryNavItems + secondaryNavItems
 @Composable
 fun OpenOrbitLinkApp() {
     val navController = rememberNavController()
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val authManager = remember { AuthTokenManager(context) }
-    val startDest = if (authManager.isLoggedIn()) "messaging" else "login"
+    val startDest = "radar"  // Skip login — go straight to satellite radar
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-    val showBottomBar = currentRoute != "login"
+    val showBottomBar = true
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -110,14 +108,8 @@ fun OpenOrbitLinkApp() {
             enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
             exitTransition = { fadeOut(tween(200)) },
         ) {
-            // Auth gate
-            composable("login") {
-                LoginScreen(onLoginSuccess = {
-                    navController.navigate("messaging") {
-                        popUpTo("login") { inclusive = true }
-                    }
-                })
-            }
+            // Login removed — direct satellite access
+            // Auth can be re-enabled for backend sync later
 
             // Primary screens
             composable("messaging") { MessagingScreen() }
@@ -258,25 +250,13 @@ fun MoreScreen(navController: NavController) {
 
         Spacer(Modifier.height(16.dp))
 
-        // Logout button
-        val context = androidx.compose.ui.platform.LocalContext.current
-        Button(
-            onClick = {
-                AuthTokenManager(context).clearToken()
-                navController.navigate("login") {
-                    popUpTo(0) { inclusive = true }
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = AlertRed.copy(alpha = 0.15f),
-                contentColor = AlertRed
-            )
-        ) {
-            Icon(Icons.Filled.Logout, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Sign Out", fontWeight = FontWeight.Bold)
-        }
+        // App info
+        Text(
+            "OpenOrbitLink — LoRa Satellite Mesh",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
     }
 }
