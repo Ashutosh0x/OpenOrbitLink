@@ -615,6 +615,12 @@ zero-infrastructure areas} where Starlink is impractical due to power and cost.
     \item \textbf{Robu.in (Buy):} \url{https://robu.in}
     \item \textbf{FabToLab (Buy):} \url{https://fabtolab.com}
     \item \textbf{ElectroPi (Buy):} \url{https://electropi.in}
+    \item \textbf{CompoIndia (Buy):} \url{https://compoindia.com}
+    \item \textbf{The Engineer Store (Bengaluru):} \url{https://theengineerstore.in}
+    \item \textbf{VirtusFab (Buy):} \url{https://virtusfab.in}
+    \item \textbf{MG Super Labs (Buy):} \url{https://mgsuperlabs.co.in}
+    \item \textbf{element14 India:} \url{https://element14.com/india}
+    \item \textbf{Mouser India:} \url{https://mouser.in}
     \item \textbf{CelesTrak (TLE data):} \url{https://celestrak.org}
     \item \textbf{TinyGS (LoRa ground station):} \url{https://tinygs.com}
     \item \textbf{FOSSA Systems:} \url{https://fossa.systems}
@@ -627,25 +633,337 @@ zero-infrastructure areas} where Starlink is impractical due to power and cost.
 \end{itemize}
 
 % ============================================================================
+\section{Advanced SDR Hardware — Beyond RTL-SDR}
+% ============================================================================
+
+For users who need \textbf{transmit capability}, higher bandwidth, or full-duplex 
+operation, the following SDR platforms offer significantly more power than the RTL-SDR V4.
+
+\subsection{HackRF One V1.9.1 — Best Value TX/RX SDR}
+
+The \textbf{HackRF One} is the most popular transmit-capable SDR, covering an 
+extraordinary 1~MHz to 6~GHz range. The V1.9.1 (Clifford Heath version) includes 
+major hardware improvements over earlier revisions.
+
+\begin{table}[h!]
+\centering
+\caption{HackRF One V1.9.1 Complete Specifications}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Frequency Range & 1~MHz -- 6~GHz \\
+Bandwidth & Up to 20~MHz \\
+Sample Rate & Up to 20~MSPS \\
+ADC Resolution & 8-bit I/Q \\
+Duplex & Half-duplex (TX or RX, not simultaneous) \\
+TX Power & Up to +15~dBm (30~mW) \\
+RX LNA & TRF37B73 MMIC (V1.9.1 upgrade) \\
+Antenna Connector & SMA female (50$\Omega$) \\
+Bias-Tee & Software-controlled, 50~mA at 3.3~V \\
+Clock & Internal; external TCXO optional \\
+Clock I/O & SMA connectors for sync \\
+Antenna Protection & SMP1330-085LF (V1.9.1 upgrade) \\
+RF Switches & SKY13453-385LF (current production) \\
+USB & Hi-Speed USB 2.0 \\
+Power & USB-powered \\
+Case & Aluminum (optional) \\
+Open Source & Yes --- hardware and firmware \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{V1.9.1 Hardware Improvements}
+
+The Clifford Heath version (V1.9.1) includes critical upgrades:
+
+\begin{enumerate}
+    \item \textbf{Antenna port protection:} SMP1330-085LF protects both TX amplifier 
+          and RX LNA from excessive RF input
+    \item \textbf{Improved Bias-T:} Operates at higher frequencies, improving RF 
+          sensitivity whether enabled or not
+    \item \textbf{Updated RF switches:} SKY13453-385LF (current production, replacing 
+          discontinued SKY13350-385LF)
+    \item \textbf{New LNA:} TRF37B73 replaces MGA-81563-TR1G
+    \item \textbf{Updated USB protection:} USB6B1 (current production)
+    \item \textbf{Updated clock protection:} BAS70 diodes on CLKIN/CLKOUT
+    \item \textbf{Reduced PCB drill sizes:} 14 down to 6, all vias 27/13 mil
+\end{enumerate}
+
+\subsubsection{FabToLab India Pricing (June 2026, Verified In-Stock)}
+
+\textbf{Store:} Fab.to.Lab (\url{https://fabtolab.com}) \\
+\textbf{Phone:} +91-9110845041, +91-8050032228/9 \\
+\textbf{Product Code:} PRC-HackRF-One \\
+\textbf{Status:} \textcolor{green!60!black}{\textbf{IN STOCK}} \\
+
+\begin{table}[h!]
+\centering
+\caption{HackRF One Pricing on FabToLab (June 2026)}
+\begin{tabular}{@{}clll@{}}
+\toprule
+\textbf{Option} & \textbf{Description} & \textbf{Price} & \textbf{Includes} \\
+\midrule
+82 & Single motherboard & \rupee 19,502 & HackRF board only \\
+83 & Board + case & \rupee 20,431 & + Aluminum enclosure \\
+84 & Full Set & \rupee 24,183 & + Case + antennas + USB \\
+\textbf{85} & \textbf{Full + TCXO 0.1PPM} & \textbf{\rupee 25,744} & \textbf{+ Precision oscillator} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Bulk discounts:} 2+ units: \rupee 19,346 each | 4+ units: \rupee 19,188 each | 7+ units: \rupee 19,031 each
+
+\vspace{0.3cm}
+\noindent\fbox{\parbox{\textwidth}{
+\textbf{Recommendation:} Choose \textbf{Option 85} (\rupee 25,744). The TCXO 0.1~PPM 
+upgrade is critical --- standard HackRF has 20~PPM drift, meaning at 868~MHz the 
+frequency wanders by $\pm$17~kHz. With 0.1~PPM, drift is only $\pm$87~Hz. LoRa 
+demodulation requires this precision for reliable packet decoding.
+}}
+
+\subsubsection{HackRF Accessories on FabToLab}
+
+\begin{table}[h!]
+\centering
+\caption{HackRF Accessories Available on FabToLab (In-Stock)}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Accessory} & \textbf{Price} & \textbf{Covers} & \textbf{Need?} \\
+\midrule
+PortaPack H4M & \rupee 29,503 & Standalone touchscreen & Highly recommended \\
+HackRF Pro (newest!) & \rupee 30,495 & Next-gen HackRF & Alternative to V1.9.1 \\
+ANT500 telescope antenna & \rupee 2,846 & 75~MHz -- 1~GHz & Good general use \\
+ANT700 telescope antenna & \rupee 2,372 & 300~MHz -- 1.1~GHz & Covers 868~MHz! \\
+800--2200~MHz antenna & \rupee 3,140 & LoRa + ADS-B & Best for satellites \\
+Aluminum Enclosure Kit & \rupee 3,353 & RF shielding & If buying bare board \\
+RF Shield + Component Kit & \rupee 1,336 & Internal shielding & Optional \\
+Opera Cake (antenna switch) & \rupee 16,941 & Multi-antenna auto-switch & Advanced \\
+Tiny TCXO 0.5~PPM module & \rupee 2,949 & Frequency stability & If not option 85 \\
+ESP32-MDK (WiFi addon) & \rupee 7,420 & WiFi for PortaPack & Optional IoT \\
+Ham It Up v1.3 (HF upconverter) & \rupee 6,040 & Below 30~MHz & Shortwave only \\
+Acrylic Case & \rupee 1,423 & Transparent enclosure & Budget option \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Other SDR Platforms Available in India}
+
+\begin{table}[h!]
+\centering
+\caption{Advanced SDR Comparison with India Availability (June 2026)}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}lllllllll@{}}
+\toprule
+\textbf{SDR} & \textbf{Freq} & \textbf{BW} & \textbf{TX} & \textbf{Duplex} & \textbf{ADC} & \textbf{Price (\rupee)} & \textbf{Stock} & \textbf{Buy From} \\
+\midrule
+RTL-SDR V4 & 500k--1.7G & 2.4M & No & --- & 8-bit & 6,000 & Scarce & FabToLab \\
+SDRplay RSP1B & 1k--2G & 10M & No & --- & 14-bit & 12,000 & Yes & FabToLab \\
+Airspy Mini & 24M--1.8G & 6M & No & --- & 12-bit & 15,000 & Limited & Mouser.in \\
+\textbf{HackRF One} & \textbf{1M--6G} & \textbf{20M} & \textbf{Yes} & Half & 8-bit & \textbf{19,502} & \textbf{Yes} & \textbf{FabToLab} \\
+HackRF Pro & 1M--6G & 20M & Yes & Half & 8-bit & 30,495 & Yes & FabToLab \\
+ADALM-Pluto & 325M--3.8G & 20M & Yes & Full & 12-bit & 25,000 & Yes & element14 \\
+LimeSDR Mini 2 & 10M--3.5G & 30.7M & Yes & Full & 12-bit & 40,000 & Yes & EngineerStore \\
+HydraSDR RFOne & 24M--1.8G & 10M & No & --- & 12-bit & 27,093 & Yes & FabToLab \\
+Fobos SDR & 50M--6G & 50M & No & USB3 & 14-bit & 53,680 & Yes & FabToLab \\
+SignalSDR Pro & 1M--6G & 61M & Yes & Full & 12-bit & 1,61,317 & Yes & FabToLab \\
+BladeRF 2.0 xA9 & 47M--6G & 61.4M & Yes & Full & 12-bit & 75,000 & Import & Mouser.in \\
+USRP B210 & 70M--6G & 56M & Yes & Full & 12-bit & 2,50,000 & Import & Mouser.in \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{Where to Buy SDR Hardware in India}
+
+\begin{table}[h!]
+\centering
+\caption{Indian SDR Retailers — Verified June 2026}
+\begin{tabular}{@{}lllp{4cm}@{}}
+\toprule
+\textbf{Store} & \textbf{Location} & \textbf{URL} & \textbf{Best For} \\
+\midrule
+\textbf{FabToLab} & Bengaluru & \url{fabtolab.com} & HackRF, accessories, widest SDR selection \\
+\textbf{The Engineer Store} & \textbf{Bengaluru} & \url{theengineerstore.in} & LimeSDR Mini 2.0 (local warehouse!) \\
+\textbf{CompoIndia} & Delhi & \url{compoindia.com} & HackRF + PortaPack kits \\
+\textbf{ElectroPi} & Delhi & \url{electropi.in} & Budget SDR, LoRa modules \\
+\textbf{Robu.in} & Pune & \url{robu.in} & RTL-SDR, LoRa, Raspberry Pi \\
+\textbf{VirtusFab} & Online & \url{virtusfab.in} & HackRF + PortaPack bundles \\
+\textbf{MG Super Labs} & Mumbai & \url{mgsuperlabs.co.in} & USRP, BladeRF, pro SDRs \\
+\textbf{element14 India} & Online & \url{element14.com/india} & ADALM-Pluto (authorized Analog Devices) \\
+\textbf{Mouser India} & Online & \url{mouser.in} & All brands, no customs hassle \\
+\textbf{IndiaMART} & B2B & \url{indiamart.com} & Yagi antennas, bulk components \\
+\textbf{SP Road, Bengaluru} & Physical & --- & Cables, connectors, SMA adapters \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Recommended Shopping Carts}
+% ============================================================================
+
+\subsection{Budget Setup: RX-Only Ground Station (\rupee 7,800)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Item} & \textbf{Price} & \textbf{Store} & \textbf{Purpose} \\
+\midrule
+RTL-SDR Blog V4 Kit & \rupee 6,000 & FabToLab / Robu.in & RX receiver \\
+SX1276 LoRa Module (868~MHz) & \rupee 500 & Robu.in & LoRa TX uplink \\
+868~MHz quarter-wave antenna & \rupee 300 & DIY / Robu.in & Signal capture \\
+USB extension cable (3m) & \rupee 200 & Amazon.in & Reduce PC noise \\
+SMA adapters & \rupee 300 & SP Road / Amazon & Connectivity \\
+RG58 coax cable (3m) & \rupee 500 & SP Road & Antenna feed \\
+\midrule
+\textbf{TOTAL} & \textbf{\rupee 7,800} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Recommended Setup: HackRF TX/RX Station (\rupee 28,816)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Item} & \textbf{Price} & \textbf{Store} & \textbf{Purpose} \\
+\midrule
+HackRF One V1.9.1 + Case + TCXO & \rupee 25,744 & FabToLab (Opt 85) & TX+RX 1--6~GHz \\
+ANT700 antenna (300--1100~MHz) & \rupee 2,372 & FabToLab & Covers 868~MHz LoRa \\
+SX1276 LoRa Module (868~MHz) & \rupee 500 & Robu.in & Dedicated LoRa TX \\
+USB extension cable & \rupee 200 & Amazon.in & Reduce noise \\
+\midrule
+\textbf{TOTAL} & \textbf{\rupee 28,816} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Premium Setup: Portable Standalone Station (\rupee 60,759)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Item} & \textbf{Price} & \textbf{Store} & \textbf{Purpose} \\
+\midrule
+HackRF One V1.9.1 + Case + TCXO & \rupee 25,744 & FabToLab (Opt 85) & Core SDR \\
+PortaPack H4M & \rupee 29,503 & FabToLab & Standalone (no PC!) \\
+ANT700 (300--1100~MHz) & \rupee 2,372 & FabToLab & LoRa band \\
+800--2200~MHz antenna & \rupee 3,140 & FabToLab & Wideband satellite \\
+\midrule
+\textbf{TOTAL} & \textbf{\rupee 60,759} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Research Setup: Full-Duplex Satellite Lab (\rupee 1,05,000)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Item} & \textbf{Price} & \textbf{Store} & \textbf{Purpose} \\
+\midrule
+LimeSDR Mini 2.0 & \rupee 40,000 & TheEngineerStore & Full-duplex TX+RX \\
+ADALM-Pluto & \rupee 25,000 & element14 India & Secondary SDR / MIMO \\
+868~MHz 12~dBi Yagi antenna & \rupee 2,000 & IndiaMART & Directional satellite \\
+Wideband LNA (SPF5189Z) & \rupee 2,500 & FabToLab & Amplify weak signals \\
+Raspberry Pi 4 (4GB) & \rupee 5,000 & Robu.in & 24/7 station computer \\
+SX1262 LoRa module & \rupee 1,200 & ElectronicsComp & Advanced LoRa TX \\
+Cables, adapters, enclosure & \rupee 3,000 & SP Road / Amazon & Infrastructure \\
+\midrule
+\textbf{TOTAL} & \textbf{$\sim$\rupee 78,700} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Import and Regulatory Notes}
+% ============================================================================
+
+\subsection{Customs and Compliance}
+
+\begin{itemize}
+    \item \textbf{WPC Approval:} Radio transmitting equipment in India may require 
+          Wireless Planning and Coordination (WPC) approval. SDR receivers are 
+          generally exempt; transmitters may need licensing depending on frequency and power.
+    \item \textbf{BIS Certification:} Bureau of Indian Standards registration may be 
+          required for direct international imports. Buying from Indian retailers avoids this.
+    \item \textbf{ISM Band:} Transmission at 868~MHz below 25~mW does NOT require a 
+          license in India under ISM band regulations.
+    \item \textbf{GST:} Some Indian electronics sites show prices \textbf{excluding 18\% GST}. 
+          Always verify the final checkout price.
+    \item \textbf{Recommendation:} Buy from Indian stores (FabToLab, element14, Mouser.in) 
+          to avoid customs detention and compliance headaches.
+\end{itemize}
+
+\subsection{Legal Use of SDR in India}
+
+\begin{table}[h!]
+\centering
+\caption{Legal Status of SDR Activities in India}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Activity} & \textbf{Legal?} & \textbf{Notes} \\
+\midrule
+Receiving any radio signal & Yes & No license needed to listen \\
+Transmitting on ISM 868~MHz ($<$25~mW) & Yes & No license needed \\
+Transmitting on amateur bands & License & Requires ASOC amateur license \\
+Receiving weather satellites & Yes & Public broadcast, free \\
+ADS-B reception & Yes & Public broadcast \\
+GPS reception & Yes & Public broadcast \\
+Intercepting cell phone signals & \textbf{No} & Illegal under Indian Telegraph Act \\
+Jamming any signal & \textbf{No} & Serious criminal offense \\
+High-power TX ($>$1~W) & License & Requires WPC approval \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
 \section{Conclusion}
 % ============================================================================
 
-For \textbf{\rupee 7,800} (approximately \$93 USD), you can build a complete satellite 
-ground station capable of receiving LoRa IoT satellite signals at 868~MHz, weather 
-satellite images at 137~MHz, aircraft positions at 1090~MHz, and amateur radio 
-communications across the VHF/UHF spectrum.
+This guide covers the complete spectrum of SDR hardware available in India as of 
+June 2026, from the entry-level RTL-SDR V4 at \rupee 6,000 to the research-grade 
+USRP B210 at \rupee 2,50,000.
 
-The RTL-SDR Blog V4 is the cornerstone of this system — providing the radio reception 
-capability that turns electromagnetic waves from space into digital data on your screen. 
+\subsection{Summary of Options}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Budget} & \textbf{Best Choice} & \textbf{Price} & \textbf{Capability} \\
+\midrule
+Starter & RTL-SDR V4 & \rupee 6,000 & RX only, learn basics \\
+Serious & HackRF One + TCXO & \rupee 25,744 & TX+RX, 1--6~GHz \\
+Portable & HackRF + PortaPack & \rupee 60,759 & Standalone, no PC \\
+Research & LimeSDR Mini 2.0 & \rupee 40,000 & Full-duplex, SatNOGS \\
+Professional & BladeRF 2.0 xA9 & \rupee 75,000 & MIMO, 61~MHz BW \\
+ISRO-grade & USRP B210 & \rupee 2,50,000 & Gold standard \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For the OpenOrbitLink project, the \textbf{HackRF One V1.9.1 with TCXO from FabToLab 
+at \rupee 25,744} represents the optimal balance of cost, capability, and availability. 
+It provides transmit capability for LoRa uplinks, covers the entire 1~MHz to 6~GHz 
+spectrum, and is in stock for immediate delivery in India.
+
 Combined with OpenOrbitLink's Android app and Python backend, this creates a 
-\textbf{complete, open-source, sub-\$100 satellite communication system} that works 
-where no other connectivity exists.
+\textbf{complete, open-source satellite communication system} for under \rupee 30,000 
+--- compared to Starlink's \rupee 4,10,000 over 3 years.
 
 \vspace{0.5cm}
 \begin{center}
     \textit{``Making satellite connectivity accessible to everyone, everywhere.''}
     
-    \textbf{OpenOrbitLink — \rupee 31 hardware, zero subscription, infinite possibilities.}
+    \textbf{OpenOrbitLink --- Affordable SDR, Zero Subscription, Infinite Possibilities.}
+    
+    \vspace{0.3cm}
+    \small{GitHub: \url{https://github.com/Ashutosh0x/OpenOrbitLink}}
 \end{center}
 
 \end{document}
