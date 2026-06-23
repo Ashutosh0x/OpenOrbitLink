@@ -1,0 +1,651 @@
+% ============================================================================
+% OpenOrbitLink — RTL-SDR Ground Station Technical Reference
+% Comprehensive Guide for Satellite Signal Reception
+% Author: Ashutosh Kumar (OpenOrbitLink Project)
+% Date: June 2026
+% Location Context: Bengaluru, India
+% ============================================================================
+
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\definecolor{loraBlue}{RGB}{0,180,216}
+\definecolor{spaceBlack}{RGB}{10,14,33}
+\definecolor{alertRed}{RGB}{233,69,96}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=loraBlue,
+    urlcolor=loraBlue,
+    citecolor=loraBlue
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{OpenOrbitLink — RTL-SDR Ground Station Guide}}
+\fancyhead[R]{June 2026}
+\fancyfoot[C]{\thepage}
+
+\title{
+    \vspace{-1cm}
+    \textbf{\Huge RTL-SDR Ground Station} \\[0.5cm]
+    \textbf{\Large Technical Reference for Satellite Signal Reception} \\[0.3cm]
+    \large OpenOrbitLink Project — Comprehensive Buying \& Setup Guide \\[0.2cm]
+    \normalsize Bengaluru, India | June 2026
+}
+\author{Ashutosh Kumar \\ \texttt{github.com/Ashutosh0x/OpenOrbitLink}}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Introduction: What is RTL-SDR?}
+% ============================================================================
+
+RTL-SDR (Realtek Software Defined Radio) is a low-cost USB dongle that turns any 
+computer into a wideband radio receiver. Originally designed as a DVB-T television 
+tuner, the RTL2832U chip inside was discovered to support raw I/Q sample output, 
+enabling reception of virtually any radio signal between 500~kHz and 1.766~GHz.
+
+\subsection{Why RTL-SDR for OpenOrbitLink?}
+
+OpenOrbitLink operates on the \textbf{868~MHz ISM band} using LoRa modulation to 
+communicate with Low Earth Orbit (LEO) satellites. The RTL-SDR V4 covers this 
+frequency perfectly, enabling:
+
+\begin{itemize}
+    \item \textbf{Passive monitoring} of LoRa satellite downlinks
+    \item \textbf{Spectrum analysis} for link budget validation
+    \item \textbf{Weather satellite} image reception (NOAA, Meteor-M2)
+    \item \textbf{ADS-B} aircraft tracking (1090~MHz)
+    \item \textbf{APRS} packet reception for mesh fallback
+    \item \textbf{Signal quality} measurement and ground-truth validation
+\end{itemize}
+
+% ============================================================================
+\section{Radio Wave Fundamentals}
+% ============================================================================
+
+\subsection{Electromagnetic Spectrum — Bands We Use}
+
+\begin{table}[h!]
+\centering
+\caption{Radio Bands Relevant to OpenOrbitLink}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Band} & \textbf{Frequency} & \textbf{Wavelength} & \textbf{Use Case} \\
+\midrule
+VHF & 30--300~MHz & 10--1~m & NOAA weather sats (137~MHz) \\
+    &             &         & APRS (144.39~MHz) \\
+    &             &         & ISS voice (145.8~MHz) \\
+UHF & 300~MHz--3~GHz & 1~m--10~cm & \textbf{LoRa ISM (868~MHz)} \\
+    &                &            & ADS-B aircraft (1090~MHz) \\
+    &                &            & GPS L1 (1575.42~MHz) \\
+L-Band & 1--2~GHz & 30--15~cm & Iridium (1616--1626~MHz) \\
+S-Band & 2--4~GHz & 15--7.5~cm & Amateur satellites \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Free-Space Path Loss (FSPL)}
+
+The signal weakens as it travels from satellite to ground. The loss is calculated as:
+
+\begin{equation}
+    \text{FSPL (dB)} = 20 \log_{10}(d) + 20 \log_{10}(f) + 20 \log_{10}\left(\frac{4\pi}{c}\right)
+\end{equation}
+
+Where $d$ = distance in meters, $f$ = frequency in Hz, $c$ = speed of light.
+
+\begin{table}[h!]
+\centering
+\caption{FSPL at 868~MHz for Different Distances}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Scenario} & \textbf{Distance} & \textbf{FSPL (dB)} \\
+\midrule
+Ground-to-Ground (rural) & 15~km & 111.3 \\
+Ground-to-Ground (record) & 832~km & 147.6 \\
+Satellite overhead (zenith) & 550~km & 144.1 \\
+Satellite at horizon (5°) & 2,100~km & 155.7 \\
+Satellite at 20° elevation & 1,200~km & 150.8 \\
+Satellite at 45° elevation & 700~km & 146.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{LoRa Modulation — Chirp Spread Spectrum}
+
+LoRa uses \textbf{Chirp Spread Spectrum (CSS)} modulation, where each symbol is a 
+frequency sweep (chirp) across the bandwidth. This provides exceptional sensitivity:
+
+\begin{table}[h!]
+\centering
+\caption{LoRa Spreading Factors and Performance at BW=125~kHz}
+\begin{tabular}{@{}llllll@{}}
+\toprule
+\textbf{SF} & \textbf{Bitrate} & \textbf{Sensitivity} & \textbf{SNR Limit} & \textbf{Range (Sat)} & \textbf{ToA (51B)} \\
+\midrule
+SF7  & 5,469~bps & $-123$~dBm & $-7.5$~dB & Overhead only & 92~ms \\
+SF8  & 3,125~bps & $-126$~dBm & $-10$~dB  & $>45°$ elev & 165~ms \\
+SF9  & 1,758~bps & $-129$~dBm & $-12.5$~dB & $>30°$ elev & 329~ms \\
+SF10 & 977~bps   & $-132$~dBm & $-15$~dB  & $>20°$ elev & 657~ms \\
+SF11 & 537~bps   & $-135$~dBm & $-17.5$~dB & $>10°$ elev & 1,315~ms \\
+SF12 & 293~bps   & $-137$~dBm & $-20$~dB  & Horizon & 2,466~ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Hardware: RTL-SDR Blog V4 — Complete Specifications}
+% ============================================================================
+
+\subsection{Core Specifications}
+
+\begin{table}[h!]
+\centering
+\caption{RTL-SDR Blog V4 Technical Specifications}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+ADC Chip & Realtek RTL2832U \\
+Tuner Chip & Rafael Micro R828D \\
+Frequency Range & 500~kHz -- 1,766~MHz \\
+Maximum Bandwidth & 2.4~MHz (stable), 3.2~MHz (max) \\
+ADC Resolution & 8-bit I/Q \\
+Sample Rate & Up to 2.4~MSPS (stable) \\
+TCXO Accuracy & $\pm 1$~PPM (temperature-compensated) \\
+Input Connector & SMA Female (50$\Omega$) \\
+Bias-Tee & Software-switchable, 4.5~V, 180~mA max \\
+HF Mode & Built-in upconverter (no aliasing) \\
+Input Filtering & Triplexed: HF / VHF / UHF paths \\
+Notch Filters & FM broadcast \& DAB rejection \\
+Case & Aluminum shielded enclosure \\
+Power & USB powered ($\sim$280~mA at 5~V) \\
+Interface & USB 2.0 \\
+Dimensions & 65 $\times$ 30 $\times$ 15~mm \\
+Weight & $\sim$50~g \\
+Operating Temp & $-10°$C to $+60°$C \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Sensitivity and Dynamic Range}
+
+\begin{table}[h!]
+\centering
+\caption{Measured Sensitivity at Key Frequencies}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Frequency} & \textbf{Noise Floor} & \textbf{Application} \\
+\midrule
+137~MHz & $-142$~dBm & NOAA weather satellite APT \\
+144~MHz & $-141$~dBm & APRS, amateur radio \\
+435~MHz & $-140$~dBm & Amateur satellite downlinks \\
+\textbf{868~MHz} & \textbf{$-138$~dBm} & \textbf{LoRa ISM (OpenOrbitLink)} \\
+1090~MHz & $-136$~dBm & ADS-B aircraft tracking \\
+1575~MHz & $-133$~dBm & GPS L1 (near upper limit) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Reception Range and Distance Analysis}
+% ============================================================================
+
+\subsection{Maximum Reception Distances by Signal Type}
+
+\begin{table}[h!]
+\centering
+\caption{Achievable Reception Distances with RTL-SDR V4}
+\begin{tabular}{@{}lllp{4.5cm}@{}}
+\toprule
+\textbf{Signal} & \textbf{Freq} & \textbf{Max Range} & \textbf{Notes} \\
+\midrule
+FM Radio & 88--108~MHz & 100--300~km & Line of sight + diffraction \\
+NOAA APT & 137~MHz & 2,800~km & Satellite footprint horizon-to-horizon \\
+Meteor LRPT & 137~MHz & 2,800~km & Higher quality images \\
+APRS & 144~MHz & 50--100~km & Ground-to-ground, terrain dependent \\
+ISS Voice & 145.8~MHz & 2,200~km & During overhead pass \\
+ADS-B & 1090~MHz & 300--450~km & Aircraft at 10,000~m altitude \\
+\textbf{LoRa Sat} & \textbf{868~MHz} & \textbf{2,100~km} & \textbf{Satellite at 5° elevation (SF12)} \\
+LoRa Ground & 868~MHz & 15--50~km & Rural, clear line of sight \\
+LoRa Record & 868~MHz & 832~km & Ground-to-ground world record \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Link Budget Calculation for LoRa Satellite}
+
+Complete link budget for FOSSASAT-2E to RTL-SDR ground station in Bengaluru:
+
+\begin{align}
+    P_{\text{TX}} &= +20 \text{~dBm} && \text{(Satellite TX power: 100~mW)} \\
+    G_{\text{TX}} &= +2 \text{~dBi} && \text{(Satellite antenna: omnidirectional)} \\
+    L_{\text{FSPL}} &= -154 \text{~dB} && \text{(868~MHz, 700~km slant range)} \\
+    L_{\text{atm}} &= -1.5 \text{~dB} && \text{(Atmospheric absorption)} \\
+    L_{\text{pol}} &= -3 \text{~dB} && \text{(Polarization mismatch)} \\
+    L_{\text{misc}} &= -1 \text{~dB} && \text{(Cable, connector losses)} \\
+    G_{\text{RX}} &= +5 \text{~dBi} && \text{(Ground Yagi antenna)} \\
+    G_{\text{LNA}} &= +20 \text{~dB} && \text{(Low Noise Amplifier)} \\
+    \hline
+    P_{\text{RX}} &= -112.5 \text{~dBm} && \text{(Signal at SDR input)} \\
+    N_{\text{floor}} &= -138 \text{~dBm} && \text{(RTL-SDR noise floor)} \\
+    \text{SNR} &= +25.5 \text{~dB} && \text{(Excellent — link closes easily)}
+\end{align}
+
+\textbf{Without LNA} (RTL-SDR + Yagi only):
+\begin{align}
+    P_{\text{RX}} &= -132.5 \text{~dBm} \\
+    \text{SNR} &= +5.5 \text{~dB} && \text{(Marginal but works with SF12)}
+\end{align}
+
+\textbf{With dipole antenna only} (RTL-SDR kit antenna):
+\begin{align}
+    P_{\text{RX}} &= -137.5 \text{~dBm} \\
+    \text{SNR} &= +0.5 \text{~dB} && \text{(Barely possible — LNA strongly recommended)}
+\end{align}
+
+% ============================================================================
+\section{Complete Hardware Shopping List}
+% ============================================================================
+
+\subsection{Essential Components}
+
+\begin{longtable}{@{}p{4cm}p{2cm}p{2cm}p{4.5cm}@{}}
+\caption{Complete Shopping List — Bengaluru, India (June 2026)} \\
+\toprule
+\textbf{Component} & \textbf{Price (\rupee)} & \textbf{Priority} & \textbf{Where to Buy} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Component} & \textbf{Price (\rupee)} & \textbf{Priority} & \textbf{Where to Buy} \\
+\midrule
+\endhead
+
+\multicolumn{4}{l}{\textbf{Core SDR Hardware}} \\
+\midrule
+RTL-SDR Blog V4 Kit (with dipole antennas) & 6,000--7,500 & Essential & Robu.in, FabToLab.com, ElectroPi.in \\
+USB Extension Cable (3m, shielded) & 200--400 & Essential & Amazon.in, local shops \\
+SMA Male-Male adapter cable & 150--300 & Essential & Robu.in, SP Road (Blr) \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Antennas}} \\
+\midrule
+868~MHz Quarter-wave ground plane (DIY) & 100--300 & Essential & DIY with copper wire \\
+868~MHz 5-element Yagi (12~dBi) & 900--2,000 & Recommended & Eteily Tech, IndiaMART \\
+137~MHz V-Dipole (for weather sats) & 0 (DIY) & Optional & Built from kit dipoles \\
+QFH Antenna (omnidirectional, for sats) & 500--1,500 & Optional & DIY or IndiaMART \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Amplification}} \\
+\midrule
+LNA (SPF5189Z wideband preamp) & 800--1,200 & Recommended & Robu.in, AliExpress \\
+RTL-SDR Blog Wideband LNA & 2,000--2,500 & Best option & FabToLab.com \\
+Bandpass Filter 868~MHz (SAW) & 400--800 & Optional & ElectronicsComp \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{LoRa Transmission Module}} \\
+\midrule
+SX1276 LoRa Module (868~MHz) & 450--800 & Essential & Robu.in, SP Road \\
+SX1262 LoRa Module (advanced) & 600--1,200 & Upgrade & ElectronicsComp \\
+E32-868T30D (1W LoRa module) & 1,000--1,500 & High power & IndiaMART, Quartz \\
+LoRa antenna (SMA, 868~MHz) & 200--400 & Essential & Robu.in \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Computing}} \\
+\midrule
+Raspberry Pi 4 (4GB) & 4,000--5,000 & For 24/7 station & Robu.in, CanaKit.in \\
+MicroSD Card (32GB) & 400--600 & With RPi & Amazon.in \\
+Raspberry Pi case + fan & 500--800 & With RPi & Robu.in \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Cables \& Connectors}} \\
+\midrule
+RG58 Coax cable (5m) & 300--500 & Essential & SP Road, IndiaMART \\
+SMA to BNC adapter & 100--200 & Useful & Electronics shops \\
+SMA to N-Type adapter & 150--250 & For Yagi & IndiaMART \\
+Weatherproof enclosure (IP65) & 400--800 & Outdoor setup & Amazon.in \\
+
+\midrule
+\textbf{TOTAL (Minimum Setup)} & \textbf{$\sim$7,800} & & \\
+\textbf{TOTAL (Full Station)} & \textbf{$\sim$22,000} & & \\
+\bottomrule
+\end{longtable}
+
+\subsection{Where to Buy in Bengaluru}
+
+\begin{table}[h!]
+\centering
+\caption{Bengaluru Electronics Shopping Guide}
+\begin{tabular}{@{}llp{5cm}@{}}
+\toprule
+\textbf{Store / Area} & \textbf{Type} & \textbf{What to Find} \\
+\midrule
+\textbf{SP Road} & Physical & Connectors, cables, SMA adapters, wire for DIY antennas \\
+\textbf{National Market (Chickpete)} & Physical & Coax cable, enclosures, general electronics \\
+\textbf{Robu.in} & Online & RTL-SDR, LoRa modules, Raspberry Pi \\
+\textbf{FabToLab.com} & Online & RTL-SDR Blog products, LNAs \\
+\textbf{ElectroPi.in} & Online & SDR accessories, dev boards \\
+\textbf{ElectronicsComp.com} & Online & SX1276/SX1262 modules, filters \\
+\textbf{Sharvielectronics.com} & Online & LoRa modules, antennas \\
+\textbf{GSAS Micro Systems} & Bangalore & Authorized Reyax LoRa partner \\
+\textbf{IndiaMART} & B2B & Yagi antennas, bulk components \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Signal Reception Capabilities}
+% ============================================================================
+
+\subsection{What You CAN Receive}
+
+\begin{longtable}{@{}p{3.5cm}lllp{3.5cm}@{}}
+\caption{Complete List of Receivable Signals} \\
+\toprule
+\textbf{Signal} & \textbf{Freq (MHz)} & \textbf{Range} & \textbf{Antenna} & \textbf{Software} \\
+\midrule
+\endfirsthead
+
+FM Broadcast & 88--108 & 100~km & Kit dipole & SDR\#, GQRX \\
+NOAA-18 APT & 137.9125 & 2,800~km & V-dipole & WXtoImg, noaa-apt \\
+NOAA-19 APT & 137.1000 & 2,800~km & V-dipole & WXtoImg, noaa-apt \\
+Meteor-M2 LRPT & 137.1000 & 2,800~km & V-dipole/QFH & MeteorDemod \\
+APRS & 144.3900 & 80~km & Dipole & Direwolf \\
+ISS APRS & 145.8250 & 2,200~km & Dipole & Direwolf \\
+ISS Voice & 145.8000 & 2,200~km & Dipole & SDR\# (FM) \\
+\textbf{LoRa IoT Sats} & \textbf{868.1} & \textbf{2,100~km} & \textbf{Yagi} & \textbf{GNU Radio, gr-lora} \\
+\textbf{FOSSASAT} & \textbf{868.0} & \textbf{2,100~km} & \textbf{Yagi} & \textbf{FOSSA Ground Station} \\
+\textbf{Lacuna Space} & \textbf{868.1} & \textbf{2,100~km} & \textbf{Yagi} & \textbf{TinyGS} \\
+ADS-B (aircraft) & 1090 & 450~km & 1090 ant & dump1090, tar1090 \\
+Iridium & 1616--1626 & 2,000~km & Patch & iridium-toolkit \\
+GPS L1 & 1575.42 & 20,200~km & Patch & gnss-sdr \\
+\bottomrule
+\end{longtable}
+
+\subsection{What You CANNOT Receive}
+
+\begin{table}[h!]
+\centering
+\caption{Signals Beyond RTL-SDR Capability}
+\begin{tabular}{@{}llp{5cm}@{}}
+\toprule
+\textbf{Signal} & \textbf{Frequency} & \textbf{Why Not} \\
+\midrule
+Starlink internet & 10.7--12.7~GHz & Ku-band — far above RTL-SDR range \\
+Starlink uplink & 14.0--14.5~GHz & Ka-band — needs dish + LNB \\
+5G mmWave & 24--39~GHz & Millimeter wave — specialized hardware \\
+Military SATCOM & Various & Encrypted + classified frequencies \\
+Cell phone calls & 700--2600~MHz & Encrypted (illegal to intercept) \\
+WiFi & 2.4/5~GHz & Above RTL-SDR range (partially) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{The Complete Signal Chain}
+% ============================================================================
+
+\subsection{End-to-End Signal Flow}
+
+The following describes how a LoRa satellite signal travels from orbit to your 
+OpenOrbitLink app:
+
+\begin{enumerate}
+    \item \textbf{Satellite Transmitter} — FOSSASAT-2E at 550~km altitude broadcasts
+          a LoRa packet at 868~MHz with 100~mW (+20~dBm) through an omnidirectional
+          antenna (+2~dBi gain).
+    
+    \item \textbf{Propagation} — Signal travels 550--2,100~km through vacuum and 
+          atmosphere, losing 144--156~dB of power (Free-Space Path Loss + atmospheric 
+          absorption + polarization mismatch).
+    
+    \item \textbf{Ground Antenna} — Your 868~MHz Yagi antenna captures the 
+          electromagnetic wave and converts it to an electrical signal of approximately 
+          $-130$~dBm ($10^{-16}$~watts).
+    
+    \item \textbf{LNA (Optional)} — Low Noise Amplifier boosts the signal by +20~dB 
+          while adding minimal noise (NF $< 1$~dB), bringing signal to $-110$~dBm.
+    
+    \item \textbf{RTL-SDR V4 — R828D Tuner} — The tuner chip selects exactly 868.1~MHz,
+          rejects out-of-band interference, and downconverts the RF signal to an 
+          intermediate frequency (IF).
+    
+    \item \textbf{RTL-SDR V4 — RTL2832U ADC} — The analog-to-digital converter samples 
+          the IF signal at 2.4~million samples/second with 8-bit resolution, producing 
+          raw I/Q (In-phase/Quadrature) data.
+    
+    \item \textbf{USB Transfer} — Raw I/Q samples stream over USB 2.0 to your computer 
+          at approximately 4.8~MB/s.
+    
+    \item \textbf{SDR Software} — SDR\# or GQRX displays the waterfall spectrogram.
+          LoRa chirps appear as diagonal lines sweeping across the bandwidth.
+    
+    \item \textbf{LoRa Demodulator} — GNU Radio with \texttt{gr-lora} block, or 
+          dedicated LoRa decoder extracts the raw packet data from CSS chirps.
+    
+    \item \textbf{OpenOrbitLink Backend} — Python backend processes the BPv7 DTN 
+          bundle, decrypts payload, validates integrity.
+    
+    \item \textbf{Android App} — Your phone displays the received message, satellite 
+          telemetry, or queued response.
+\end{enumerate}
+
+% ============================================================================
+\section{Software Stack}
+% ============================================================================
+
+\begin{table}[h!]
+\centering
+\caption{Complete Software Stack for Ground Station}
+\begin{tabular}{@{}lllp{3.5cm}@{}}
+\toprule
+\textbf{Software} & \textbf{Platform} & \textbf{License} & \textbf{Purpose} \\
+\midrule
+\multicolumn{4}{l}{\textbf{SDR Interface}} \\
+\midrule
+SDR\# (SDRSharp) & Windows & Freeware & General SDR receiver \\
+GQRX & Linux/Mac & Open source & SDR receiver + waterfall \\
+CubicSDR & All & Open source & Cross-platform SDR \\
+SDRangel & All & Open source & Advanced multi-channel \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Satellite Tracking}} \\
+\midrule
+Gpredict & All & Open source & Pass prediction + Doppler \\
+SatDump & All & Open source & Satellite signal decoder \\
+Orbitron & Windows & Freeware & TLE-based tracking \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{LoRa Decoding}} \\
+\midrule
+GNU Radio & Linux/Win & Open source & Signal processing framework \\
+gr-lora & Linux & Open source & LoRa demodulator block \\
+TinyGS & ESP32 & Open source & LoRa ground station \\
+FOSSA GS & All & Open source & FOSSASAT decoder \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Weather Satellites}} \\
+\midrule
+WXtoImg & Windows & Freeware & NOAA APT image decoder \\
+MeteorDemod & All & Open source & Meteor-M2 LRPT decoder \\
+noaa-apt & All & Open source & Rust-based APT decoder \\
+SatDump & All & Open source & Universal satellite decoder \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Aircraft Tracking}} \\
+\midrule
+dump1090 & All & Open source & ADS-B decoder \\
+tar1090 & Linux & Open source & Web-based ADS-B display \\
+FlightAware & Cloud & Free tier & ADS-B feed network \\
+
+\midrule
+\multicolumn{4}{l}{\textbf{Drivers}} \\
+\midrule
+Zadig & Windows & Open source & USB driver installer \\
+rtl-sdr (librtlsdr) & Linux & Open source & RTL-SDR driver library \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Comparison: RTL-SDR vs Alternatives}
+% ============================================================================
+
+\begin{table}[h!]
+\centering
+\caption{SDR Hardware Comparison (June 2026 Pricing)}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Feature} & \textbf{RTL-SDR V4} & \textbf{Nooelec V5} & \textbf{HackRF One} & \textbf{Airspy Mini} \\
+\midrule
+Price (India) & \rupee 6,000 & \rupee 5,000 & \rupee 35,000 & \rupee 15,000 \\
+TX Capable & No & No & \textbf{Yes} & No \\
+Freq Range & 500k--1.7G & 25M--1.7G & 1M--6G & 24M--1.8G \\
+Bandwidth & 2.4~MHz & 2.4~MHz & 20~MHz & 6~MHz \\
+ADC Bits & 8-bit & 8-bit & 8-bit & 12-bit \\
+TCXO & 1~PPM & 0.5~PPM & 20~PPM & 0.5~PPM \\
+Bias-Tee & Software & Always-on & Software & Software \\
+HF Support & Upconverter & Direct samp & Native & No \\
+Best For & \textbf{Value + LoRa} & Monitoring & TX + wide BW & Sensitivity \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Verdict for OpenOrbitLink}
+
+\textbf{RTL-SDR Blog V4} is the recommended choice because:
+\begin{enumerate}
+    \item Covers 868~MHz LoRa band with excellent sensitivity ($-138$~dBm noise floor)
+    \item Software-switchable Bias-Tee safely powers LNA without hardware modification
+    \item 1~PPM TCXO provides frequency stability critical for LoRa demodulation
+    \item Best price-to-performance ratio at \rupee 6,000
+    \item No TX needed — LoRa transmission is handled by the SX1276/SX1262 module
+\end{enumerate}
+
+% ============================================================================
+\section{Cost Comparison: OpenOrbitLink vs Starlink}
+% ============================================================================
+
+\begin{table}[h!]
+\centering
+\caption{Total Cost of Ownership — OpenOrbitLink vs Starlink}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Item} & \textbf{OpenOrbitLink} & \textbf{Starlink} \\
+\midrule
+Hardware (one-time) & \rupee 7,800 (\$93) & \$599 (\rupee 50,000) \\
+Monthly subscription & \rupee 0 (free) & \$120/month (\rupee 10,000) \\
+Year 1 total & \rupee 7,800 & \rupee 1,70,000 \\
+Year 3 total & \rupee 7,800 & \rupee 4,10,000 \\
+License required & No (ISM band) & No \\
+Internet access & No (messaging only) & Yes (broadband) \\
+Power consumption & 2W (USB) & 75W (dish + router) \\
+Works off-grid & Yes (battery) & No (needs 75W) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{0.5cm}
+\textbf{OpenOrbitLink is 52$\times$ cheaper over 3 years.} While it provides messaging 
+rather than broadband internet, it serves the critical need of \textbf{connectivity in 
+zero-infrastructure areas} where Starlink is impractical due to power and cost.
+
+% ============================================================================
+\section{Quick Start: Your First Satellite Reception}
+% ============================================================================
+
+\subsection{Step 1: Unbox and Install (15 minutes)}
+\begin{enumerate}
+    \item Connect RTL-SDR V4 to USB extension cable
+    \item Attach the kit's telescopic dipole antenna
+    \item Install Zadig driver (Windows) or \texttt{apt install rtl-sdr} (Linux)
+    \item Install SDR\# or GQRX
+    \item Tune to local FM station (e.g., 93.5~MHz) to verify operation
+\end{enumerate}
+
+\subsection{Step 2: Receive NOAA Weather Satellite (Day 1)}
+\begin{enumerate}
+    \item Open Gpredict, add NOAA-19 (NORAD ID: 33591)
+    \item Set your location to Bengaluru (12.97°N, 77.59°E)
+    \item Wait for next pass ($>30°$ elevation recommended)
+    \item Set SDR\# to 137.100~MHz, FM Wide, 40~kHz bandwidth
+    \item Arrange dipole as V-shape, pointing North-South
+    \item Record audio during pass ($\sim$12 minutes)
+    \item Decode with WXtoImg $\rightarrow$ weather image from space!
+\end{enumerate}
+
+\subsection{Step 3: Monitor LoRa Satellites (Week 1)}
+\begin{enumerate}
+    \item Build or buy 868~MHz Yagi antenna
+    \item Install GNU Radio + \texttt{gr-lora} blocks
+    \item Track FOSSASAT-2E (NORAD ID: TBD) via CelesTrak
+    \item Tune to 868.0~MHz during predicted pass
+    \item Look for chirp patterns on waterfall display
+    \item Decode LoRa packets with gr-lora
+\end{enumerate}
+
+% ============================================================================
+\section{Useful Links}
+% ============================================================================
+
+\begin{itemize}
+    \item \textbf{RTL-SDR Blog:} \url{https://www.rtl-sdr.com}
+    \item \textbf{Robu.in (Buy):} \url{https://robu.in}
+    \item \textbf{FabToLab (Buy):} \url{https://fabtolab.com}
+    \item \textbf{ElectroPi (Buy):} \url{https://electropi.in}
+    \item \textbf{CelesTrak (TLE data):} \url{https://celestrak.org}
+    \item \textbf{TinyGS (LoRa ground station):} \url{https://tinygs.com}
+    \item \textbf{FOSSA Systems:} \url{https://fossa.systems}
+    \item \textbf{GNU Radio:} \url{https://www.gnuradio.org}
+    \item \textbf{gr-lora (LoRa decoder):} \url{https://github.com/rpp0/gr-lora}
+    \item \textbf{SatDump:} \url{https://github.com/SatDump/SatDump}
+    \item \textbf{Gpredict:} \url{http://gpredict.oz9aec.net}
+    \item \textbf{r/RTLSDR:} \url{https://reddit.com/r/RTLSDR}
+    \item \textbf{OpenOrbitLink:} \url{https://github.com/Ashutosh0x/OpenOrbitLink}
+\end{itemize}
+
+% ============================================================================
+\section{Conclusion}
+% ============================================================================
+
+For \textbf{\rupee 7,800} (approximately \$93 USD), you can build a complete satellite 
+ground station capable of receiving LoRa IoT satellite signals at 868~MHz, weather 
+satellite images at 137~MHz, aircraft positions at 1090~MHz, and amateur radio 
+communications across the VHF/UHF spectrum.
+
+The RTL-SDR Blog V4 is the cornerstone of this system — providing the radio reception 
+capability that turns electromagnetic waves from space into digital data on your screen. 
+Combined with OpenOrbitLink's Android app and Python backend, this creates a 
+\textbf{complete, open-source, sub-\$100 satellite communication system} that works 
+where no other connectivity exists.
+
+\vspace{0.5cm}
+\begin{center}
+    \textit{``Making satellite connectivity accessible to everyone, everywhere.''}
+    
+    \textbf{OpenOrbitLink — \rupee 31 hardware, zero subscription, infinite possibilities.}
+\end{center}
+
+\end{document}
